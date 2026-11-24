@@ -126,7 +126,8 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 .colr i{width:14px;height:12px;border:1px solid rgba(0,0,0,.25);border-radius:2px}
 .tools .tb-blue{background:#e3eefb;color:#16191d}.tools .tb-green{background:#e3f4e8;color:#16191d}.tools .tb-warn{background:#fff6e0;border-color:#f0b44c;color:#16191d}
 .paper{font-family:"Pretendard Variable",Pretendard,system-ui,sans-serif;border:1px solid var(--line);border-top:0;background:var(--paper);color:var(--pink);border-radius:0 0 14px 14px;padding:clamp(18px,4vw,44px);min-height:65vh}
-.editor{outline:none;min-height:60vh}
+.editor{outline:none;min-height:60vh;cursor:text}
+.paper{cursor:default}
 .editor:empty:before{content:"공부한 내용을 자유롭게 쓰세요. #태그 를 쓰면 나중에 모아 볼 수 있습니다.";color:var(--pmute)}
 .editor img{cursor:pointer}.editor img.sel{outline:3px solid var(--pacc)}
 .content{overflow-wrap:anywhere;font-size:16px;line-height:1.75}
@@ -633,8 +634,8 @@ function toolbar(){
   return `<div class="tools" id="tools">
   <button data-c="h2" title="큰 제목">제목</button><button data-c="h3" title="작은 제목">소제목</button><button data-c="p" title="일반 글">본문</button><button data-c="quote" title="인용">인용</button>
   <span class="sep"></span>
-  <select data-s="font" title="글꼴"><option value="">글꼴</option>${Object.entries(FONTS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
-  <select data-s="size" title="크기"><option value="">크기</option><option value="2">작게</option><option value="3">보통</option><option value="4">크게</option><option value="5">더 크게</option></select>
+  <select data-s="font" id="fsel" title="글꼴">${Object.entries(FONTS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+  <select data-s="size" id="ssel" title="크기"><option value="2">작게</option><option value="3" selected>보통</option><option value="4">크게</option><option value="5">더 크게</option></select>
   <span class="sep"></span>
   <button data-c="bold"><b>B</b></button><button data-c="italic"><i>I</i></button><button data-c="underline"><u>U</u></button><button data-c="strike"><s>S</s></button>
   <label class="colr" title="글자색">가<input type="color" data-s="fore" value="#c0392b"><i style="background:#c0392b" id="foresw"></i></label>
@@ -695,7 +696,30 @@ function tcmd(op){
   else if(op==='delTable'){return ask('이 표를 삭제할까요?','삭제',()=>{const p=document.createElement('p');p.innerHTML='<br>';table.replaceWith(p);markDirty();$('ttools').classList.remove('show')})}
   tBuild(table,m,a);
 }
-function tSync(){const t=$('ttools');if(t)t.classList.toggle('show',!!anc('#ed td, #ed th'))}
+function tSync(){const t=$('ttools');if(t)t.classList.toggle('show',!!anc('#ed td, #ed th'));fsSync()}
+function fsSync(){
+  const ed=$('ed'),fs=$('fsel'),ss=$('ssel');if(!ed||!fs)return;const sl=getSelection();if(!sl.anchorNode||!ed.contains(sl.anchorNode))return;
+  let el=sl.anchorNode.nodeType===1?sl.anchorNode:sl.anchorNode.parentElement,font='',size='';
+  for(;el&&el!==ed;el=el.parentElement){if(!font&&el.style&&el.style.fontFamily)font=Object.keys(FONTS).find(k=>el.style.fontFamily.includes(k))||'';
+    if(!size&&el.style&&el.style.fontSize)size=el.style.fontSize}
+  fs.value=font||'Pretendard Variable';
+  ss.value={'x-small':'2','small':'2','medium':'3','large':'4','x-large':'5','xx-large':'5'}[size]||'3';
+}
+function bindMargin(){
+  const paper=document.querySelector('.paper'),ed=$('ed');if(!paper||!ed)return;let dragFrom=null;
+  const blockAt=y=>{let best=null,ba=1e9;ed.querySelectorAll('p,h2,h3,li,blockquote,summary,tr,hr').forEach(b=>{const r=b.getBoundingClientRect();if(y>=r.top&&y<=r.bottom){const a=r.height*r.width;if(a<ba){ba=a;best=b}}});return best};
+  const selBlocks=(a,b)=>{if(!a||!b)return;const r=document.createRange();const first=a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_PRECEDING?b:a,last=first===a?b:a;
+    r.setStart(first,0);r.setEnd(last,last.childNodes.length);const sl=getSelection();sl.removeAllRanges();sl.addRange(r);saveSel()};
+  paper.addEventListener('mousedown',e=>{
+    if(e.target!==paper||e.clientX>ed.getBoundingClientRect().left)return;
+    const b=blockAt(e.clientY);if(!b)return;e.preventDefault();ed.focus();
+    if(e.shiftKey&&savedRange){const s0=savedRange.startContainer;const a=(s0.nodeType===1?s0:s0.parentElement).closest('p,h2,h3,li,blockquote,summary,tr,hr');selBlocks(a||b,b);return}
+    dragFrom=b;selBlocks(b,b);
+    const mv=ev=>{const c=blockAt(ev.clientY);if(c)selBlocks(dragFrom,c)};
+    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);dragFrom=null};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+}
 async function copyText(txt){
   try{await navigator.clipboard.writeText(txt);return true}catch(e){}
   try{const ta=document.createElement('textarea');ta.value=txt;ta.style.cssText='position:fixed;left:-9999px;top:0';document.body.append(ta);ta.select();const ok=document.execCommand('copy');ta.remove();if(ok)return true}catch(e){}
@@ -747,7 +771,8 @@ function bindEditor(){
   const tb=$('tools');
   tb.onmousedown=e=>{if(e.target.closest('button'))e.preventDefault()};
   tb.onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.t)return tcmd(b.dataset.t);cmd(b.dataset.c)};
-  tb.querySelectorAll('select').forEach(s=>{s.onmousedown=saveSel;s.onchange=()=>{const v=s.value;s.value='';if(v)sel(s.dataset.s,v)}});
+  tb.querySelectorAll('select').forEach(s=>{s.onmousedown=saveSel;s.onchange=()=>{const v=s.value;if(s.dataset.s==='imgsize')s.value='';if(v)sel(s.dataset.s,v)}});
+  bindMargin();
   tb.querySelectorAll('input[type=color]').forEach(c=>{c.onclick=saveSel;c.onchange=()=>{$(c.dataset.s+'sw').style.background=c.value;sel(c.dataset.s,c.value)}});
 }
 $('edfile').onchange=()=>edImgs([...$('edfile').files]);
