@@ -238,7 +238,7 @@ let app,auth,db,st,user=null,notes={},areas=[],settingsLoaded=false,notesLoaded=
 let route={v:'home'},q='',filt={type:'',area:'',tag:''},editing=null,dirty=false,savedRange=null,selImg=null,storageOK=true;
 
 function start(c){
-  try{app=initializeApp(c);auth=getAuth(app);db=getFirestore(app);st=getStorage(app)}
+  try{app=initializeApp(c);auth=getAuth(app);db=getFirestore(app);st=getStorage(app);st.maxUploadRetryTime=30000;st.maxOperationRetryTime=30000}
   catch(e){root.innerHTML=`<div class="center"><div class="panel"><h1>연결 오류</h1><p class="sub">${esc(e.message)}</p><button id="reset">설정 다시 하기</button></div></div>`;$('reset').onclick=()=>{try{localStorage.removeItem('pk-fbcfg')}catch(e){}setupScreen()};return}
   onAuthStateChanged(auth,u=>{user=u;if(!u)return loginScreen();listen()});
 }
