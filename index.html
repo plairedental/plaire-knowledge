@@ -317,7 +317,7 @@ function clean(html,strip){
   })(rt);
   return rt.innerHTML;
 }
-const plain=html=>{const d=new DOMParser().parseFromString('<div>'+clean(html)+'</div>','text/html');return d.body.textContent.replace(/\s+/g,' ').trim()};
+const plain=html=>{const d=new DOMParser().parseFromString('<div>'+clean(html).replace(/<\/(p|div|h2|h3|li|td|th|summary|blockquote|tr|details)>|<br\s*\/?>/gi,' $&')+'</div>','text/html');return d.body.textContent.replace(/\s+/g,' ').trim()};
 const tagsOf=(...parts)=>[...new Set(parts.join(' ').match(TAG_RE)||[])].map(x=>x.slice(1));
 function linkTags(el){
   const w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);const ns=[];
@@ -519,7 +519,7 @@ function renderNote(n){
   <input class="title" id="ntitle" placeholder="제목 (예: 우식 제거 어디까지 해야 하나)" value="${esc(n.title)}">
   <input class="srcline" id="ntopic" placeholder="한 줄 설명 (예: Selective caries removal · Clinical review)" value="${esc(n.topic)}">
   <div class="chips" id="htags" style="margin-top:6px"></div></div>
-  <div class="acts"><button data-copyai title="Claude에게 보완을 부탁할 수 있도록 내용을 복사">AI 보완용 복사</button><button class="pri" data-save>저장</button><button class="delbtn" data-del>삭제</button></div></div>
+  <div class="acts"><button data-aifmt title="Claude·Gemini로 서식을 정리해서 다시 붙여넣기">✨ AI 서식 정리</button><button data-copyai title="Claude에게 내용 점검을 부탁할 수 있도록 복사">AI 보완용 복사</button><button class="pri" data-save>저장</button><button class="delbtn" data-del>삭제</button></div></div>
   ${toolbar()}
   <div class="paper"><div class="editor content" id="ed" contenteditable="true"></div></div>
   <div class="savebar"><span id="savest">${n.updated&&!editing.isNew?'마지막 저장 '+ago(n.updated):'아직 저장 전'}</span><span>Ctrl+S 저장 · #태그 는 띄어쓰기 없이</span></div>
@@ -736,6 +736,8 @@ function mainClick(e){
   if('del' in d)return delNote(notes[route.id]);
   if('move' in d)return moveDlg(notes[route.id]);
   if('copyai' in d)return copyAI(notes[route.id]);
+  if('aifmt' in d)return aiFmtDlg();
+  if('mdexp' in d)return mdExport();
   if('areaedit' in d)return areaDlg(areas.find(a=>a.id===d.areaedit));
   if('backup' in d)return backup();
   if('import' in d){$('impfile').value='';return $('impfile').click()}
@@ -755,6 +757,65 @@ function moveDlg(n){
   modal.classList.add('show');$('mn').onclick=hide;
   $('my').onclick=async()=>{const to=$('mv').value;hide();try{await updateDoc(notesRef(n.id),{parent:to});n.parent=to;renderMain()}catch(e){info('옮기지 못했습니다.')}};
 }
+const FMT_PROMPT=`아래 HTML은 내 임상 공부 노트 본문이야. 내용(문장, 수치, 출처, #태그, <img> 사진 태그)은 하나도 빼거나 바꾸지 말고, 읽기 좋게 서식만 다시 잡아 줘.
+쓸 수 있는 형식:
+- <h2>큰 제목</h2>, <h3>소제목</h3>, <p>문단</p>, <b>굵게</b>, <mark>형광펜</mark>
+- 목록 <ul><li>, 번호 <ol><li>, 체크리스트 <ul class="check"><li>, 단계 <ol class="steps"><li>
+- 상자: <div class="box-blue">핵심 요약</div>, <div class="box-green">임상 팁·적용</div>, <div class="box-warn"><p><b>⚠️ 확인 필요</b></p>…</div>
+- 접는 글: <details><summary>제목</summary>자세한 이론·수치</details>
+- 출처 표시: <span class="ref">(저자, 연도)</span>
+- 표: <table><tr><th>…</th></tr><tr><td>…</td></tr></table>
+권장 구성: 맨 위 box-blue에 한 줄 결론 → h2로 큰 흐름 → 자세한 이론·수치는 details로 접기 → 임상 적용은 box-green → 불확실한 부분은 box-warn.
+다른 태그나 style 속성은 쓰지 말고, 결과는 HTML만 \`\`\`html 코드블록 하나로 답해 줘.
+
+[노트 제목] `;
+function aiFmtDlg(){
+  const ed=$('ed');if(!ed)return;
+  mbox.innerHTML=`<p><b>✨ AI 서식 정리</b></p>
+  <p class="sub" style="margin:0;font-size:13px">① 요청을 복사해서 Claude(또는 Gemini) 대화창에 붙여넣고 → ② 받은 답을 통째로 아래에 붙여넣은 뒤 → ③ 적용을 누르세요. 저장 전까지는 되돌릴 수 있습니다.</p>
+  <button class="pri" id="fcopy">① 서식 정리 요청 복사</button>
+  <textarea id="fin" placeholder="② AI의 답을 여기에 붙여넣기 (코드블록째로 붙여넣어도 됩니다)"></textarea>
+  <div class="r"><button id="mn">닫기</button><button class="pri" id="my">③ 적용</button></div>`;
+  modal.classList.add('show');$('mn').onclick=hide;
+  $('fcopy').onclick=async()=>{const txt=FMT_PROMPT+$('ntitle').value+'\n\n'+clean(ed.innerHTML).replace(/<details[^>]*>/g,'<details>');
+    try{await navigator.clipboard.writeText(txt);$('fcopy').textContent='복사했습니다 ✓ 이제 AI 대화창에 붙여넣으세요'}catch(e){$('fin').value=txt;$('fin').select();$('fcopy').textContent='자동 복사가 안 되어 아래 칸에 넣었습니다. Ctrl+C로 복사하세요'}};
+  $('my').onclick=()=>{
+    let raw=$('fin').value.trim();const m=raw.match(/```(?:html)?\s*([\s\S]*?)```/i);if(m)raw=m[1];
+    const html=clean(raw);if(!plain(html)){$('fin').focus();return}
+    const before=ed.innerHTML;ed.innerHTML=html;ed.querySelectorAll('details').forEach(d=>d.setAttribute('open',''));markDirty();showTags();
+    mbox.innerHTML='<p>서식을 적용했습니다. 확인하고 <b>저장</b>을 누르세요.</p><div class="r"><button id="mn">되돌리기</button><button class="pri" id="my">확인</button></div>';
+    $('mn').onclick=()=>{ed.innerHTML=before;hide();toast('원래대로 되돌렸습니다')};$('my').onclick=hide;
+  };
+}
+function toMd(html){
+  const d=new DOMParser().parseFromString('<div id="r">'+clean(html)+'</div>','text/html').getElementById('r');
+  const walk=n=>[...n.childNodes].map(c=>{
+    if(c.nodeType===3)return c.nodeValue.replace(/\s+/g,' ');if(c.nodeType!==1)return'';
+    const t=c.tagName,inner=()=>walk(c).trim();
+    if(t==='H2')return'\n\n### '+inner()+'\n';if(t==='H3')return'\n\n#### '+inner()+'\n';
+    if(t==='P'||t==='DIV'||t==='BLOCKQUOTE')return'\n'+inner()+'\n';
+    if(t==='LI')return'\n- '+inner();if(t==='UL'||t==='OL')return walk(c)+'\n';
+    if(t==='B'||t==='STRONG')return'**'+inner()+'**';if(t==='SUMMARY')return'\n**'+inner()+'**\n';
+    if(t==='BR')return'\n';if(t==='IMG')return'[사진]';if(t==='A')return inner()+' ('+c.getAttribute('href')+')';
+    if(t==='TR')return'\n| '+[...c.children].map(x=>walk(x).trim()).join(' | ')+' |';
+    return walk(c)}).join('');
+  return walk(d).replace(/\n{3,}/g,'\n\n').trim();
+}
+function mdExport(){
+  const scope=$('mdscope').value;let list=all();
+  if(scope.startsWith('a:'))list=list.filter(n=>(n.area||'')===scope.slice(2));
+  if(scope.startsWith('t:'))list=list.filter(n=>(n.tags||[]).includes(scope.slice(2)));
+  if(!list.length)return info('내보낼 노트가 없습니다.');
+  const sorted=[];const seen=new Set(list.map(n=>n.id));
+  const visit=n=>{if(seen.has(n.id))sorted.push(n);kids(n.id).forEach(visit)};
+  areas.map(a=>a.id).concat(['']).forEach(aid=>topsOf(aid).forEach(visit));
+  const md='# 임상 공부 노트 ('+$('mdscope').selectedOptions[0].text+')\n\n'+sorted.map(n=>{
+    const a=areaOf(n.area);const src=[n.author,n.range,n.year].filter(Boolean).join(' · ');
+    return '## '+pathOf(n.id).map(x=>x.title).join(' › ')+'\n'+[a?'- 진료 영역: '+a.name:'',src?'- 출처: '+src:'',n.topic?'- 요약: '+n.topic:'',(n.tags||[]).length?'- 태그: '+n.tags.map(t=>'#'+t).join(' '):''].filter(Boolean).join('\n')+'\n\n'+toMd(n.html);
+  }).join('\n\n---\n\n');
+  const b=new Blob([md],{type:'text/markdown'});const el=document.createElement('a');
+  el.download='임상공부노트-'+$('mdscope').selectedOptions[0].text.replace(/[^\w가-힣·#-]/g,'')+'.md';el.href=URL.createObjectURL(b);el.click();setTimeout(()=>URL.revokeObjectURL(el.href),5000);
+}
 async function copyAI(n){
   const txt='아래는 치과의사인 나의 임상 공부 노트야. 빠진 내용, 틀릴 수 있는 부분, 임상 포인트를 점검하고 보완할 내용을 정리해 줘.\n\n[제목] '+$('ntitle').value+'\n[출처] '+[$('nauthor').value,$('nrange').value,$('nyear').value].filter(Boolean).join(' · ')+'\n\n'+($('ed').innerText||'');
   try{await navigator.clipboard.writeText(txt);toast('복사했습니다. Claude 대화창에 붙여넣으세요.')}catch(e){info('복사하지 못했습니다.')}
@@ -766,7 +827,9 @@ function renderSettings(){
   <div class="grid2"><div class="panel"><h3 style="margin-bottom:10px">진료 영역</h3>${areas.map(a=>`<div class="att"><i style="width:12px;height:12px;border-radius:50%;background:${esc(a.color)}"></i><span style="flex:1">${esc(a.name)}</span><small>${all().filter(n=>n.area===a.id).length}개</small><button data-areaedit="${esc(a.id)}">수정</button></div>`).join('')}
   <button data-addarea2 style="margin-top:10px;width:100%">+ 영역 추가</button></div>
   <div class="panel"><h3>백업</h3><p class="sub" style="font-size:13px">글과 출처 정보, 첨부 목록이 JSON 파일로 저장됩니다. 사진·PDF 원본은 Firebase Storage에 그대로 남아 있고, 파일에는 그 주소가 들어 있습니다.</p>
-  <div style="display:grid;gap:8px"><button class="pri" data-backup>전체 백업 파일 받기</button><button data-import>백업 파일에서 불러오기</button></div></div></div>`;
+  <div style="display:grid;gap:8px"><button class="pri" data-backup>전체 백업 파일 받기</button><button data-import>백업 파일에서 불러오기</button></div></div>
+  <div class="panel"><h3>내 노트로 AI에게 질문하기</h3><p class="sub" style="font-size:13px">노트를 문서 파일(.md) 하나로 내려받아 <b>NotebookLM</b>이나 <b>Claude 프로젝트</b>에 자료로 올리면, 내 노트를 근거로 질문에 답해 줍니다. 노트가 바뀌면 다시 내려받아 교체하세요.</p>
+  <div style="display:grid;gap:8px"><select id="mdscope"><option value="all">전체 노트</option>${areas.filter(a=>all().some(n=>n.area===a.id)).map(a=>`<option value="a:${esc(a.id)}">${esc(a.name)}</option>`).join('')}${allTags().map(([t])=>`<option value="t:${esc(t)}">#${esc(t)}</option>`).join('')}</select><button class="pri" data-mdexp>질문용 파일 받기</button></div></div></div>`;
   $('main').querySelector('[data-addarea2]').onclick=()=>areaDlg(null);
 }
 function areaDlg(a){
