@@ -116,7 +116,7 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 /* 편집기 */
 .tools{display:flex;flex-wrap:wrap;align-items:center;gap:5px;position:sticky;top:66px;z-index:4;background:var(--card);padding:9px;border:1px solid var(--line);border-radius:12px 12px 0 0}
 .tools button,.tools select,.colr{min-height:32px;min-width:32px;padding:0 8px;font-size:13px;border-radius:7px;border:1px solid var(--line);background:var(--card2);color:var(--ink)}
-.tools select{width:auto;padding:0 4px}
+.tools select{width:auto;max-width:74px;padding:0 2px}
 .tools .brk{flex-basis:100%;height:0}
 .ttools{display:none;flex-basis:100%;flex-wrap:wrap;align-items:center;gap:5px;padding:8px;margin-top:4px;border-radius:8px;background:#eef5fd;border:1px solid #cfe1f7;font-size:13px}
 .ttools.show{display:flex}.ttools b{margin-right:4px;color:var(--acc)}
@@ -134,6 +134,15 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 .content h3{font-size:19px;margin:22px 0 8px}
 .content p{margin:0 0 12px}
 .content ul,.content ol{margin:0 0 12px;padding-left:24px}
+@counter-style kn-paren{system:extends decimal;suffix:") "}
+@counter-style kn-both{system:extends decimal;prefix:"(";suffix:") "}
+@counter-style kn-circle{system:fixed;symbols:"①" "②" "③" "④" "⑤" "⑥" "⑦" "⑧" "⑨" "⑩" "⑪" "⑫" "⑬" "⑭" "⑮" "⑯" "⑰" "⑱" "⑲" "⑳";suffix:" ";fallback:decimal}
+.content ol{list-style-type:decimal}
+.content ol ol{list-style-type:kn-paren;margin-bottom:0}
+.content ol ol ol{list-style-type:kn-both}
+.content ol ol ol ol{list-style-type:kn-circle}
+.content ul ul{margin-bottom:0}
+.editor.colrs,.editor.colrs td,.editor.colrs th{cursor:col-resize}
 .content mark{background:#fff1a8;color:inherit}
 .content img{max-width:100%;height:auto;border-radius:8px;display:block;margin:12px 0}
 .content img.img-s{width:40%}.content img.img-m{width:70%}.content img.img-l{width:100%}
@@ -281,7 +290,7 @@ const saveAreas=()=>setDoc(doc(db,'users/'+user.uid+'/meta/settings'),{areas},{m
 const OK=new Set(['P','BR','H2','H3','B','STRONG','I','EM','U','S','STRIKE','DEL','SPAN','MARK','UL','OL','LI','DETAILS','SUMMARY','IMG','HR','BLOCKQUOTE','DIV','A','TABLE','THEAD','TBODY','TR','TH','TD']);
 const DROP=new Set(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','LINK','META','SVG','TEMPLATE','FORM','INPUT','BUTTON','TEXTAREA','SELECT']);
 const CLS=new Set(['box-blue','box-green','box-warn','check','done','steps','ref','img-s','img-m','img-l']);
-const FONTS={'Pretendard Variable':'Pretendard (기본)','Nanum Myeongjo':'명조','Nanum Pen Script':'손글씨'};
+const FONTS={'Pretendard Variable':'기본','Nanum Myeongjo':'명조','Nanum Pen Script':'손글씨'};
 const COLOR_RE=/^(#[0-9a-f]{3,8}|rgba?\([\d\s,.%]+\))$/i,SIZE_RE=/^(\d+(\.\d+)?(px|em|rem)|x-small|small|medium|large|x-large|xx-large|xxx-large)$/;
 function clean(html,strip){
   const d=new DOMParser().parseFromString('<div id="r">'+(html||'')+'</div>','text/html');
@@ -306,6 +315,7 @@ function clean(html,strip){
         if(s.fontFamily){const f=Object.keys(FONTS).find(k=>s.fontFamily.includes(k));if(f)keep.push("font-family:'"+f+"'")}
         if(/^(left|center|right)$/.test(s.textAlign))keep.push('text-align:'+s.textAlign);
         if(/^\d{1,3}(px|em)$/.test(s.marginLeft)&&parseFloat(s.marginLeft)>0)keep.push('margin-left:'+s.marginLeft);
+        if((t==='TD'||t==='TH')&&/^\d{2,4}px$/.test(s.width))keep.push('width:'+s.width);
       }
       const cls=strip?'':(c.getAttribute('class')||'').split(/\s+/).filter(x=>CLS.has(x)).join(' ');
       for(const a of [...c.attributes]){
@@ -647,7 +657,7 @@ function toolbar(){
 function tModel(table){
   const rows=[...table.rows],occ=[],cells=[];
   rows.forEach((tr,r)=>{let c=0;[...tr.cells].forEach(td=>{occ[r]=occ[r]||[];while(occ[r][c])c++;
-    const rs=Math.max(1,td.rowSpan||1),cs=Math.max(1,td.colSpan||1);const a={r,c,rs,cs,html:td.innerHTML,th:td.tagName==='TH',el:td};cells.push(a);
+    const rs=Math.max(1,td.rowSpan||1),cs=Math.max(1,td.colSpan||1);const a={r,c,rs,cs,html:td.innerHTML,th:td.tagName==='TH',el:td,w:td.style.width};cells.push(a);
     for(let i=0;i<rs;i++)for(let j=0;j<cs;j++){occ[r+i]=occ[r+i]||[];occ[r+i][c+j]=a}c+=cs})});
   const R=Math.max(rows.length,occ.length),C=Math.max(0,...occ.map(x=>x?x.length:0));
   return {cells,R,C};
@@ -661,7 +671,7 @@ function tFill(m){
 function tBuild(table,m,focus){
   tFill(m);const tb=document.createElement('tbody');let target=null;
   for(let r=0;r<m.R;r++){const tr=document.createElement('tr');
-    m.cells.filter(a=>a.r===r).sort((x,y)=>x.c-y.c).forEach(a=>{const td=document.createElement(a.th?'th':'td');td.innerHTML=a.html||'<br>';if(a.rs>1)td.rowSpan=a.rs;if(a.cs>1)td.colSpan=a.cs;tr.append(td);if(a===focus)target=td});
+    m.cells.filter(a=>a.r===r).sort((x,y)=>x.c-y.c).forEach(a=>{const td=document.createElement(a.th?'th':'td');td.innerHTML=a.html||'<br>';if(a.w&&a.cs===1)td.style.width=a.w;if(a.rs>1)td.rowSpan=a.rs;if(a.cs>1)td.colSpan=a.cs;tr.append(td);if(a===focus)target=td});
     tb.append(tr)}
   table.innerHTML='';table.append(tb);
   if(!m.R||!m.C){const p=document.createElement('p');p.innerHTML='<br>';table.replaceWith(p);return}
@@ -717,6 +727,21 @@ function bindEditor(){
     const fs=[...(e.clipboardData.files||[])].filter(f=>f.type.startsWith('image/'));
     if(fs.length){e.preventDefault();saveSel();return edImgs(fs)}
     const h=e.clipboardData.getData('text/html');if(h){e.preventDefault();document.execCommand('insertHTML',false,clean(h,true))}
+  });
+  let rsCell=null,rsDrag=null;
+  ed.addEventListener('mousemove',e=>{
+    if(rsDrag)return;const td=e.target.closest&&e.target.closest('td,th');
+    if(!td){if(rsCell){rsCell=null;ed.classList.remove('colrs')}return}
+    const r=td.getBoundingClientRect(),near=r.right-e.clientX<7&&r.right-e.clientX>=-2;
+    rsCell=near?td:null;ed.classList.toggle('colrs',near);
+  });
+  ed.addEventListener('mousedown',e=>{
+    if(!rsCell)return;e.preventDefault();const td=rsCell,table=td.closest('table'),m=tModel(table),a=m.cells.find(x=>x.el===td);if(!a)return;
+    const col=a.c+a.cs-1,els=m.cells.filter(x=>x.c===col&&x.cs===1).map(x=>x.el);if(!els.length)els.push(td);
+    rsDrag={x:e.clientX,w:els[0].getBoundingClientRect().width,els};
+    const mv=ev=>{const w=Math.max(40,Math.round(rsDrag.w+ev.clientX-rsDrag.x));rsDrag.els.forEach(c=>c.style.width=w+'px')};
+    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);rsDrag=null;rsCell=null;ed.classList.remove('colrs');markDirty()};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
   });
   ed.addEventListener('drop',e=>{const fs=[...(e.dataTransfer.files||[])].filter(f=>f.type.startsWith('image/'));if(fs.length){e.preventDefault();saveSel();edImgs(fs)}});
   const tb=$('tools');
