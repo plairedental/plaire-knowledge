@@ -117,6 +117,9 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 .tools{display:flex;flex-wrap:wrap;align-items:center;gap:5px;position:sticky;top:66px;z-index:4;background:var(--card);padding:9px;border:1px solid var(--line);border-radius:12px 12px 0 0}
 .tools button,.tools select,.colr{min-height:32px;min-width:32px;padding:0 8px;font-size:13px;border-radius:7px;border:1px solid var(--line);background:var(--card2);color:var(--ink)}
 .tools select{width:auto;padding:0 4px}
+.tools .brk{flex-basis:100%;height:0}
+.ttools{display:none;flex-basis:100%;flex-wrap:wrap;align-items:center;gap:5px;padding:8px;margin-top:4px;border-radius:8px;background:#eef5fd;border:1px solid #cfe1f7;font-size:13px}
+.ttools.show{display:flex}.ttools b{margin-right:4px;color:var(--acc)}
 .tools .sep{width:1px;align-self:stretch;background:var(--line);margin:2px}
 .colr{display:inline-flex;align-items:center;gap:5px;position:relative;cursor:pointer}
 .colr input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
@@ -302,10 +305,11 @@ function clean(html,strip){
         if(s.fontSize&&SIZE_RE.test(s.fontSize))keep.push('font-size:'+s.fontSize);
         if(s.fontFamily){const f=Object.keys(FONTS).find(k=>s.fontFamily.includes(k));if(f)keep.push("font-family:'"+f+"'")}
         if(/^(left|center|right)$/.test(s.textAlign))keep.push('text-align:'+s.textAlign);
+        if(/^\d{1,3}(px|em)$/.test(s.marginLeft)&&parseFloat(s.marginLeft)>0)keep.push('margin-left:'+s.marginLeft);
       }
       const cls=strip?'':(c.getAttribute('class')||'').split(/\s+/).filter(x=>CLS.has(x)).join(' ');
       for(const a of [...c.attributes]){
-        const ok=(t==='IMG'&&a.name==='src'&&/^https:\/\//.test(a.value))||(t==='A'&&a.name==='href'&&/^https?:\/\//.test(a.value));
+        const ok=(t==='IMG'&&a.name==='src'&&/^https:\/\//.test(a.value))||(t==='A'&&a.name==='href'&&/^https?:\/\//.test(a.value))||((t==='TD'||t==='TH')&&(a.name==='colspan'||a.name==='rowspan')&&/^([2-9]|[1-4]\d)$/.test(a.value));
         if(!ok)c.removeAttribute(a.name);
       }
       if(keep.length)c.setAttribute('style',keep.join(';'));
@@ -617,22 +621,76 @@ function drawToc(){
 /* ---------- 편집기 ---------- */
 function toolbar(){
   return `<div class="tools" id="tools">
-  <select data-s="block" title="문단"><option value="">문단</option><option value="p">본문</option><option value="h2">제목</option><option value="h3">소제목</option><option value="blockquote">인용</option></select>
+  <button data-c="h2" title="큰 제목">제목</button><button data-c="h3" title="작은 제목">소제목</button><button data-c="p" title="일반 글">본문</button><button data-c="quote" title="인용">인용</button>
+  <span class="sep"></span>
   <select data-s="font" title="글꼴"><option value="">글꼴</option>${Object.entries(FONTS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
   <select data-s="size" title="크기"><option value="">크기</option><option value="2">작게</option><option value="3">보통</option><option value="4">크게</option><option value="5">더 크게</option></select>
   <span class="sep"></span>
   <button data-c="bold"><b>B</b></button><button data-c="italic"><i>I</i></button><button data-c="underline"><u>U</u></button><button data-c="strike"><s>S</s></button>
   <label class="colr" title="글자색">가<input type="color" data-s="fore" value="#c0392b"><i style="background:#c0392b" id="foresw"></i></label>
   <label class="colr" title="배경색">배경<input type="color" data-s="back" value="#fff1a8"><i style="background:#fff1a8" id="backsw"></i></label>
+  <span class="brk"></span>
+  <button data-c="ul">• 목록</button><button data-c="ol">1. 목록</button><button data-c="check">☑ 체크</button><button data-c="toggle">▸ 접는 글</button>
   <span class="sep"></span>
-  <button data-c="ul">• 목록</button><button data-c="ol">1. 목록</button><button data-c="check">☑ 체크</button><button data-c="steps">① 단계</button>
-  <span class="sep"></span>
-  <button data-c="box-blue" class="tb-blue">파란 상자</button><button data-c="box-green" class="tb-green">초록 상자</button><button data-c="box-warn" class="tb-warn">⚠️ 확인 필요</button><button data-c="unbox">상자 빼기</button>
-  <button data-c="ref">(근거)</button><button data-c="toggle">▸ 접는 글</button>
+  <button data-c="box-blue" class="tb-blue">파란 상자</button><button data-c="box-green" class="tb-green">초록 상자</button><button data-c="box-warn" class="tb-warn">⚠️ 확인 필요</button><button data-c="unbox">상자 빼기</button><button data-c="ref">(근거)</button>
   <span class="sep"></span>
   <button data-c="img">🖼 사진</button><select data-s="imgsize" title="선택한 사진 크기"><option value="">사진 크기</option><option value="img-s">작게</option><option value="img-m">중간</option><option value="img-l">크게</option></select>
-  <button data-c="table">표</button><button data-c="hr">구분선</button><button data-c="clear">서식 지우기</button><button data-c="undo">↶</button><button data-c="redo">↷</button>
+  <button data-c="table">표</button><button data-c="hr">구분선</button><button data-c="clear">서식 지우기</button><button data-c="undo" title="되돌리기">↶</button><button data-c="redo" title="다시 하기">↷</button>
+  <div class="ttools" id="ttools"><b>표 편집</b>
+   <button data-t="rowAbove">위에 행 추가</button><button data-t="rowBelow">아래에 행 추가</button><button data-t="delRow">행 삭제</button>
+   <span class="sep"></span><button data-t="colLeft">왼쪽에 열 추가</button><button data-t="colRight">오른쪽에 열 추가</button><button data-t="delCol">열 삭제</button>
+   <span class="sep"></span><button data-t="mergeRight">오른쪽 칸과 합치기</button><button data-t="mergeDown">아래 칸과 합치기</button><button data-t="split">칸 나누기</button>
+   <span class="sep"></span><button data-t="header">머리 칸 전환</button><button data-t="delTable" class="danger">표 삭제</button></div>
   </div>`;
+}
+/* ---------- 표 편집 ---------- */
+function tModel(table){
+  const rows=[...table.rows],occ=[],cells=[];
+  rows.forEach((tr,r)=>{let c=0;[...tr.cells].forEach(td=>{occ[r]=occ[r]||[];while(occ[r][c])c++;
+    const rs=Math.max(1,td.rowSpan||1),cs=Math.max(1,td.colSpan||1);const a={r,c,rs,cs,html:td.innerHTML,th:td.tagName==='TH',el:td};cells.push(a);
+    for(let i=0;i<rs;i++)for(let j=0;j<cs;j++){occ[r+i]=occ[r+i]||[];occ[r+i][c+j]=a}c+=cs})});
+  const R=Math.max(rows.length,occ.length),C=Math.max(0,...occ.map(x=>x?x.length:0));
+  return {cells,R,C};
+}
+function tFill(m){
+  const occ=Array.from({length:m.R},()=>Array(m.C).fill(null));
+  m.cells=m.cells.filter(a=>a.rs>0&&a.cs>0&&a.r<m.R&&a.c<m.C);
+  m.cells.forEach(a=>{a.rs=Math.min(a.rs,m.R-a.r);a.cs=Math.min(a.cs,m.C-a.c);for(let i=0;i<a.rs;i++)for(let j=0;j<a.cs;j++)occ[a.r+i][a.c+j]=a});
+  for(let r=0;r<m.R;r++)for(let c=0;c<m.C;c++)if(!occ[r][c]){const a={r,c,rs:1,cs:1,html:'<br>',th:false};m.cells.push(a);occ[r][c]=a}
+}
+function tBuild(table,m,focus){
+  tFill(m);const tb=document.createElement('tbody');let target=null;
+  for(let r=0;r<m.R;r++){const tr=document.createElement('tr');
+    m.cells.filter(a=>a.r===r).sort((x,y)=>x.c-y.c).forEach(a=>{const td=document.createElement(a.th?'th':'td');td.innerHTML=a.html||'<br>';if(a.rs>1)td.rowSpan=a.rs;if(a.cs>1)td.colSpan=a.cs;tr.append(td);if(a===focus)target=td});
+    tb.append(tr)}
+  table.innerHTML='';table.append(tb);
+  if(!m.R||!m.C){const p=document.createElement('p');p.innerHTML='<br>';table.replaceWith(p);return}
+  const t=target||tb.querySelector('td,th');const rg=document.createRange();rg.selectNodeContents(t);rg.collapse(true);const sl=getSelection();sl.removeAllRanges();sl.addRange(rg);
+}
+function tcmd(op){
+  const td=anc('#ed td, #ed th');if(!td)return info('먼저 표 안의 칸을 누르세요.');
+  const table=td.closest('table'),m=tModel(table),a=m.cells.find(x=>x.el===td);if(!a)return;markDirty();
+  const atRow=at=>{m.cells.forEach(x=>{if(x.r>=at)x.r++;else if(x.r+x.rs>at)x.rs++});m.R++};
+  const atCol=at=>{m.cells.forEach(x=>{if(x.c>=at)x.c++;else if(x.c+x.cs>at)x.cs++});m.C++};
+  if(op==='rowAbove')atRow(a.r);
+  else if(op==='rowBelow')atRow(a.r+a.rs);
+  else if(op==='colLeft')atCol(a.c);
+  else if(op==='colRight')atCol(a.c+a.cs);
+  else if(op==='delRow'){const i=a.r;m.cells.forEach(x=>{if(x.r===i){x.rs--;}else if(x.r<i&&x.r+x.rs>i)x.rs--;else if(x.r>i)x.r--});m.R--;return tBuild(table,m,null)}
+  else if(op==='delCol'){const i=a.c;m.cells.forEach(x=>{if(x.c===i){x.cs--;}else if(x.c<i&&x.c+x.cs>i)x.cs--;else if(x.c>i)x.c--});m.C--;return tBuild(table,m,null)}
+  else if(op==='mergeRight'){const b=m.cells.find(x=>x.r===a.r&&x.c===a.c+a.cs);if(!b||b.rs!==a.rs)return info('오른쪽 칸과 높이가 같아야 합칠 수 있습니다.');a.cs+=b.cs;if(plain(b.html))a.html+=' '+b.html;b.rs=0}
+  else if(op==='mergeDown'){const b=m.cells.find(x=>x.c===a.c&&x.r===a.r+a.rs);if(!b||b.cs!==a.cs)return info('아래 칸과 너비가 같아야 합칠 수 있습니다.');a.rs+=b.rs;if(plain(b.html))a.html+='<br>'+b.html;b.rs=0}
+  else if(op==='split'){if(a.rs===1&&a.cs===1)return info('합쳐진 칸에서만 나눌 수 있습니다.');a.rs=1;a.cs=1}
+  else if(op==='header'){const row=m.cells.filter(x=>x.r===a.r);const to=!a.th;row.forEach(x=>x.th=to)}
+  else if(op==='delTable'){return ask('이 표를 삭제할까요?','삭제',()=>{const p=document.createElement('p');p.innerHTML='<br>';table.replaceWith(p);markDirty();$('ttools').classList.remove('show')})}
+  tBuild(table,m,a);
+}
+function tSync(){const t=$('ttools');if(t)t.classList.toggle('show',!!anc('#ed td, #ed th'))}
+async function copyText(txt){
+  try{await navigator.clipboard.writeText(txt);return true}catch(e){}
+  try{const ta=document.createElement('textarea');ta.value=txt;ta.style.cssText='position:fixed;left:-9999px;top:0';document.body.append(ta);ta.select();const ok=document.execCommand('copy');ta.remove();if(ok)return true}catch(e){}
+  mbox.innerHTML='<p>자동 복사가 막혀 있습니다. 아래 내용이 선택되어 있으니 <b>Ctrl+C</b>로 복사하세요.</p><textarea id="cpta"></textarea><div class="r"><button class="pri" id="mn">닫기</button></div>';
+  $('cpta').value=txt;modal.classList.add('show');$('cpta').focus();$('cpta').select();$('mn').onclick=hide;return false;
 }
 function bindEditor(){
   const ed=$('ed');
@@ -646,12 +704,15 @@ function bindEditor(){
     const li=e.target.closest('ul.check>li');if(li&&e.offsetX<26){li.classList.toggle('done');markDirty()}
   });
   ed.addEventListener('keydown',e=>{
-    if(e.key!=='Tab')return;const an=getSelection().anchorNode;if(!an)return;const el=an.nodeType===1?an:an.parentElement;const td=el&&el.closest('td,th');if(!td)return;
-    e.preventDefault();const tr=td.parentElement,cells=[...tr.children],i=cells.indexOf(td);
-    let nx=cells[i+1]||(tr.nextElementSibling&&tr.nextElementSibling.children[0]);
-    if(!nx){const nr=document.createElement('tr');cells.forEach(()=>{const c=document.createElement('td');c.innerHTML='<br>';nr.append(c)});tr.after(nr);nx=nr.children[0];markDirty()}
-    const r=document.createRange();r.selectNodeContents(nx);r.collapse(true);const s=getSelection();s.removeAllRanges();s.addRange(r);
+    if(e.key!=='Tab')return;e.preventDefault();
+    const td=anc('#ed td, #ed th');
+    if(td){const all2=[...td.closest('table').querySelectorAll('td,th')],i=all2.indexOf(td);let nx=all2[i+(e.shiftKey?-1:1)];
+      if(!nx&&!e.shiftKey){tcmd('rowBelow');return}if(!nx)return;
+      const r=document.createRange();r.selectNodeContents(nx);r.collapse(true);const sl=getSelection();sl.removeAllRanges();sl.addRange(r);return}
+    const x=(a,v)=>document.execCommand(a,false,v);
+    try{x('styleWithCSS',true)}catch(_){}x(e.shiftKey?'outdent':'indent');try{x('styleWithCSS',false)}catch(_){}markDirty();
   });
+  if(!bindEditor.sc){document.addEventListener('selectionchange',tSync);bindEditor.sc=1}
   ed.addEventListener('paste',e=>{
     const fs=[...(e.clipboardData.files||[])].filter(f=>f.type.startsWith('image/'));
     if(fs.length){e.preventDefault();saveSel();return edImgs(fs)}
@@ -660,7 +721,7 @@ function bindEditor(){
   ed.addEventListener('drop',e=>{const fs=[...(e.dataTransfer.files||[])].filter(f=>f.type.startsWith('image/'));if(fs.length){e.preventDefault();saveSel();edImgs(fs)}});
   const tb=$('tools');
   tb.onmousedown=e=>{if(e.target.closest('button'))e.preventDefault()};
-  tb.onclick=e=>{const b=e.target.closest('button');if(b)cmd(b.dataset.c)};
+  tb.onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.t)return tcmd(b.dataset.t);cmd(b.dataset.c)};
   tb.querySelectorAll('select').forEach(s=>{s.onmousedown=saveSel;s.onchange=()=>{const v=s.value;s.value='';if(v)sel(s.dataset.s,v)}});
   tb.querySelectorAll('input[type=color]').forEach(c=>{c.onclick=saveSel;c.onchange=()=>{$(c.dataset.s+'sw').style.background=c.value;sel(c.dataset.s,c.value)}});
 }
@@ -698,6 +759,7 @@ function sel(kind,v){
 function cmd(c){
   const ed=$('ed');if(!ed)return;ed.focus();markDirty();const x=(a,v)=>document.execCommand(a,false,v);
   if(['bold','italic','underline','undo','redo'].includes(c))x(c);
+  else if(c==='h2'||c==='h3'||c==='p')x('formatBlock','<'+c+'>');else if(c==='quote')x('formatBlock','<blockquote>');
   else if(c==='strike')x('strikeThrough');else if(c==='ul')x('insertUnorderedList');else if(c==='ol')x('insertOrderedList');
   else if(c==='check')listCls('check',false);else if(c==='steps')listCls('steps',true);
   else if(c.startsWith('box-'))wrapBox(c);
@@ -778,7 +840,7 @@ function aiFmtDlg(){
   <div class="r"><button id="mn">닫기</button><button class="pri" id="my">③ 적용</button></div>`;
   modal.classList.add('show');$('mn').onclick=hide;
   $('fcopy').onclick=async()=>{const txt=FMT_PROMPT+$('ntitle').value+'\n\n'+clean(ed.innerHTML).replace(/<details[^>]*>/g,'<details>');
-    try{await navigator.clipboard.writeText(txt);$('fcopy').textContent='복사했습니다 ✓ 이제 AI 대화창에 붙여넣으세요'}catch(e){$('fin').value=txt;$('fin').select();$('fcopy').textContent='자동 복사가 안 되어 아래 칸에 넣었습니다. Ctrl+C로 복사하세요'}};
+    try{await navigator.clipboard.writeText(txt);$('fcopy').textContent='복사했습니다 ✓ 이제 AI 대화창에 붙여넣으세요'}catch(e){const ta=document.createElement('textarea');ta.value=txt;ta.style.cssText='position:fixed;left:-9999px';document.body.append(ta);ta.select();let ok=false;try{ok=document.execCommand('copy')}catch(_){}ta.remove();if(ok)$('fcopy').textContent='복사했습니다 ✓ 이제 AI 대화창에 붙여넣으세요';else{$('fin').value=txt;$('fin').select();$('fcopy').textContent='자동 복사가 안 되어 아래 칸에 넣었습니다. Ctrl+C로 복사한 뒤 지우고 답을 붙여넣으세요'}}};
   $('my').onclick=()=>{
     let raw=$('fin').value.trim();const m=raw.match(/```(?:html)?\s*([\s\S]*?)```/i);if(m)raw=m[1];
     const html=clean(raw);if(!plain(html)){$('fin').focus();return}
@@ -818,7 +880,7 @@ function mdExport(){
 }
 async function copyAI(n){
   const txt='아래는 치과의사인 나의 임상 공부 노트야. 빠진 내용, 틀릴 수 있는 부분, 임상 포인트를 점검하고 보완할 내용을 정리해 줘.\n\n[제목] '+$('ntitle').value+'\n[출처] '+[$('nauthor').value,$('nrange').value,$('nyear').value].filter(Boolean).join(' · ')+'\n\n'+($('ed').innerText||'');
-  try{await navigator.clipboard.writeText(txt);toast('복사했습니다. Claude 대화창에 붙여넣으세요.')}catch(e){info('복사하지 못했습니다.')}
+  if(await copyText(txt))toast('복사했습니다. Claude 대화창에 붙여넣으세요.');
 }
 
 /* ---------- 영역 관리 · 백업 ---------- */
