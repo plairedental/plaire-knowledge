@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#f5f7f9">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Plaire Knowledge</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&family=Nanum+Pen+Script&display=swap">
 <style>
@@ -977,6 +980,7 @@ function ask(t,yes,fn){mbox.innerHTML='<p></p><div class="r"><button id="mn">취
 function info(t){mbox.innerHTML='<p></p><div class="r"><button class="pri" id="mn">확인</button></div>';mbox.querySelector('p').textContent=t;modal.classList.add('show');$('mn').onclick=hide}
 
 /* ---------- 시작 ---------- */
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 if(!cfg){setupScreen()}else start(cfg);
 </script>
 </body>
