@@ -283,7 +283,7 @@ function listen(){
     settingsLoaded=true;render();
   },err));
   unsubs.push(onSnapshot(collection(db,base+'/notes'),s=>{
-    const n={};s.forEach(d=>n[d.id]={id:d.id,...d.data()});if(editing&&editing.isNew&&notes[editing.id]&&!n[editing.id])n[editing.id]=notes[editing.id];else if(editing&&n[editing.id]&&notes[editing.id])n[editing.id].files=notes[editing.id].files;notes=n;notesLoaded=true;render();
+    const n={};s.forEach(d=>n[d.id]={id:d.id,...d.data()});if(editing&&editing.isNew&&notes[editing.id]&&!n[editing.id])n[editing.id]=notes[editing.id];else if(editing&&n[editing.id]&&notes[editing.id]){n[editing.id].files=notes[editing.id].files;n[editing.id].trashFiles=notes[editing.id].trashFiles}notes=n;notesLoaded=true;render();autoPurge();
   },err));
 }
 function err(e){root.innerHTML=`<div class="center"><div class="panel"><h1>불러오지 못했습니다</h1><p class="sub">${esc(e.code==='permission-denied'?'이 계정은 접근 권한이 없습니다. 보안 규칙에 등록한 본인 Google 계정으로 로그인했는지 확인해 주세요.':e.message)}</p><button id="out">다른 계정으로 로그인</button></div></div>`;$('out').onclick=()=>signOut(auth)}
@@ -347,7 +347,8 @@ function linkTags(el){
 }
 
 /* ---------- 구조 ---------- */
-const all=()=>Object.values(notes);
+const all=()=>Object.values(notes).filter(n=>!n.deleted);
+const trashed=()=>Object.values(notes).filter(n=>n.deleted);
 const ord=n=>n.order??n.created??0;
 const kids=pid=>all().filter(n=>(n.parent||'')===(pid||'')).sort((a,b)=>ord(a)-ord(b));
 const pathOf=id=>{const o=[];let n=notes[id],g=0;while(n&&g++<40){o.unshift(n);n=notes[n.parent]}return o};
@@ -359,15 +360,15 @@ const allTags=()=>{const m={};all().forEach(n=>(n.tags||[]).forEach(t=>m[t]=(m[t
 function go(r){
   if(editing&&dirty)return ask('저장하지 않은 내용이 있습니다. 나갈까요?','나가기',()=>{dirty=false;editing=null;go(r)});
   editing=null;route=r;
-  const h=r.v==='note'?'#/note/'+r.id:r.v==='list'?'#/list':r.v==='tag'?'#/tag/'+encodeURIComponent(r.tag):r.v==='settings'?'#/settings':'#/';
+  const h=r.v==='note'?'#/note/'+r.id:r.v==='list'?'#/list':r.v==='tag'?'#/tag/'+encodeURIComponent(r.tag):r.v==='settings'?'#/settings':r.v==='trash'?'#/trash':'#/';
   if(location.hash!==h)history.pushState(null,'',h);
   render();scrollTo(0,0);
 }
 function fromHash(){const h=decodeURIComponent(location.hash);let m;
-  if(m=h.match(/^#\/note\/(.+)$/))route={v:'note',id:m[1]};else if(h==='#/list')route={v:'list'};else if(m=h.match(/^#\/tag\/(.+)$/))route={v:'tag',tag:m[1]};else if(h==='#/settings')route={v:'settings'};else route={v:'home'};
+  if(m=h.match(/^#\/note\/(.+)$/))route={v:'note',id:m[1]};else if(h==='#/list')route={v:'list'};else if(m=h.match(/^#\/tag\/(.+)$/))route={v:'tag',tag:m[1]};else if(h==='#/settings')route={v:'settings'};else if(h==='#/trash')route={v:'trash'};else route={v:'home'};
   editing=null;dirty=false;render()}
 addEventListener('popstate',fromHash);
-fromHashInit();function fromHashInit(){const h=decodeURIComponent(location.hash);let m;if(m=h.match(/^#\/note\/(.+)$/))route={v:'note',id:m[1]};else if(h==='#/list')route={v:'list'};else if(h==='#/settings')route={v:'settings'};else if(m=h.match(/^#\/tag\/(.+)$/))route={v:'tag',tag:m[1]}}
+fromHashInit();function fromHashInit(){const h=decodeURIComponent(location.hash);let m;if(m=h.match(/^#\/note\/(.+)$/))route={v:'note',id:m[1]};else if(h==='#/list')route={v:'list'};else if(h==='#/settings')route={v:'settings'};else if(h==='#/trash')route={v:'trash'};else if(m=h.match(/^#\/tag\/(.+)$/))route={v:'tag',tag:m[1]}}
 addEventListener('beforeunload',e=>{if(editing&&dirty){e.preventDefault();e.returnValue=''}});
 addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();const s=$('q');if(s)s.focus()}
@@ -404,6 +405,7 @@ function renderSide(){
   ${areaTree()}
   <div class="sechd"><span>설정</span></div>
   <button class="nav ${route.v==='settings'?'on':''}" data-nav="settings">⚙ 영역 관리 · 백업</button>
+  <button class="nav ${route.v==='trash'?'on':''}" data-nav="trash">🗑 휴지통 ${trashCount()?`<em style="font-style:normal;color:var(--mute);font-size:12px;margin-left:auto">${trashCount()}</em>`:''}</button>
   <div class="me">${user.photoURL?`<img src="${esc(user.photoURL)}" alt="">`:`<span class="av">${esc((user.displayName||'원')[0])}</span>`}<div>${esc(user.displayName||'원장님')}<small>${esc(user.email||'')}</small></div><button data-out style="min-height:30px;font-size:12px;padding:0 8px">로그아웃</button></div>`;
 }
 function noteBranch(n,depth,cur){
@@ -476,11 +478,12 @@ function sideClick(e){
 /* ---------- 메인 화면 ---------- */
 function renderMain(){
   const m=$('main');if(!m)return;
-  if(route.v==='note'){const n=notes[route.id];if(n)return renderNote(n);route={v:'home'}}
+  if(route.v==='note'){const n=notes[route.id];if(n&&!n.deleted)return renderNote(n);route={v:'home'}}
   if(route.v==='list')return renderList();
   if(route.v==='tag')return renderTag();
   if(route.v==='search')return renderSearch();
   if(route.v==='settings')return renderSettings();
+  if(route.v==='trash')return renderTrash();
   renderHome();
 }
 function rowHtml(n){
@@ -604,14 +607,14 @@ async function addFiles(fs){
     try{const a=await upload(f,n.id);n.files=[...(n.files||[]),a];await persistFiles(n);drawAtts()}catch(e){storageFail(e);break}
   }
 }
-async function persistFiles(n){if(editing&&editing.isNew)return markDirty();await updateDoc(notesRef(n.id),{files:n.files||[]})}
+async function persistFiles(n){if(editing&&editing.isNew&&editing.id===n.id)return markDirty();await updateDoc(notesRef(n.id),{files:n.files||[],trashFiles:n.trashFiles||[]})}
 function drawAtts(){
   const n=notes[editing.id],box=$('atts');if(!box)return;
   box.innerHTML=(n.files||[]).map((f,i)=>`<div class="att"><span>${f.kind==='link'?'🔗':/^image/.test(f.type)?'🖼':'📄'}</span><a href="${esc(/^https?:\/\//.test(f.url)?f.url:'#')}" target="_blank" rel="noopener">${esc(f.name)}</a><small>${esc(f.kind==='link'?'링크':fsize(f.size))}</small>${/^image/.test(f.type)?`<button data-insimg="${i}" title="본문에 넣기">본문</button>`:''}<button data-rmatt="${i}" class="danger">✕</button></div>`).join('')||'<p class="sub" style="margin:0;font-size:13px">아직 첨부가 없습니다.</p>';
   box.onclick=async e=>{const b=e.target.closest('button');if(!b)return;
     if(b.dataset.insimg){const f=n.files[+b.dataset.insimg];restoreSel();document.execCommand('insertHTML',false,'<img src="'+esc(f.url)+'"><p><br></p>');markDirty();return}
-    if(b.dataset.rmatt){const i=+b.dataset.rmatt,f=n.files[i];ask(`「${f.name}」 첨부를 지울까요?`+(f.kind==='file'?' 저장된 파일도 함께 지워집니다.':''),'지우기',async()=>{
-      try{if(f.kind==='file'&&f.path)await deleteObject(sref(st,f.path)).catch(()=>{});n.files=n.files.filter((_,j)=>j!==i);await persistFiles(n);drawAtts()}catch(e){info('지우지 못했습니다.')}})}};
+    if(b.dataset.rmatt){const i=+b.dataset.rmatt,f=n.files[i];
+      try{n.files=n.files.filter((_,j)=>j!==i);n.trashFiles=[...(n.trashFiles||[]),{...f,removedAt:Date.now()}];await persistFiles(n);drawAtts();toast('첨부를 휴지통으로 옮겼습니다')}catch(e){info('지우지 못했습니다.')}}};
 }
 function linkDlg(){
   mbox.innerHTML=`<p><b>외부 자료 링크 추가</b><br><span class="sub" style="font-size:13px">구글 드라이브, NAS(QuickConnect 등) 공유 링크를 붙여넣으세요.</span></p>
@@ -831,7 +834,7 @@ async function saveNote(){
   const html=clean($('ed').innerHTML).replace(/<details[^>]*>/g,'<details>');
   const data={title,topic:$('ntopic').value.trim(),author:$('nauthor').value.trim(),range:$('nrange').value.trim(),year:$('nyear').value.trim(),
     area:$('narea').value,type:$('ntype').value,progress:+$('nprog').value,html,tags:tagsOf(title,$('ntopic').value,plain(html)),
-    parent:n.parent||'',order:ord(n),files:n.files||[],created:n.created||Date.now(),updated:Date.now()};
+    parent:n.parent||'',order:ord(n),files:n.files||[],trashFiles:n.trashFiles||[],created:n.created||Date.now(),updated:Date.now()};
   const b=document.querySelector('[data-save]');if(b){b.disabled=true;b.textContent='저장 중…'}
   try{await setDoc(notesRef(n.id),data);Object.assign(n,data);editing.isNew=false;dirty=false;toast('저장했습니다');$('savest').textContent='마지막 저장 방금';renderSide();drawToc()}
   catch(e){info(/exceed|size/i.test(e.message||'')?'노트가 너무 큽니다. 하위 노트로 나눠 주세요.':'저장하지 못했습니다: '+(e.code||e.message))}
@@ -845,6 +848,7 @@ function mainClick(e){
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;
   if(b.closest('#toc')&&treeClick(b))return;
   if('area' in d){filt.area=d.area;return go({v:'list'})}
+  if(route.v==='trash'&&(d.restore||d.purge||d.frestore||d.fpurge||'empty' in d))return trashClick(d);
   if(d.nav)return go({v:d.nav});
   if('save' in d)return saveNote();
   if('newsub' in d){if(editing&&editing.isNew)return info('먼저 이 노트를 저장해 주세요.');return go2(()=>newNote(route.id))}
@@ -861,9 +865,40 @@ function go2(fn){if(editing&&dirty&&!editing.isNew)return ask('저장하지 않�
 function delNote(n){
   if(editing&&editing.isNew){delete notes[n.id];dirty=false;editing=null;return go({v:'home'})}
   const ds=desc(n.id);
-  ask(ds.length?`「${n.title}」와 하위 노트 ${ds.length}개, 그리고 첨부된 파일이 모두 지워집니다. 되돌릴 수 없습니다.`:`「${n.title}」와 첨부 파일을 지울까요? 되돌릴 수 없습니다.`,'삭제',async()=>{
-    try{for(const id of [...ds.reverse(),n.id]){for(const f of (notes[id].files||[]))if(f.kind==='file'&&f.path)await deleteObject(sref(st,f.path)).catch(()=>{});await deleteDoc(notesRef(id))}
-      dirty=false;editing=null;go(n.parent&&notes[n.parent]?{v:'note',id:n.parent}:{v:'list'})}catch(e){info('삭제하지 못했습니다: '+(e.code||e.message))}});
+  ask(ds.length?`「${n.title}」와 하위 노트 ${ds.length}개를 휴지통으로 옮길까요? 30일 동안 복원할 수 있습니다.`:`「${n.title}」를 휴지통으로 옮길까요? 30일 동안 복원할 수 있습니다.`,'휴지통으로',async()=>{
+    try{const b=writeBatch(db),now=Date.now();[n.id,...ds].forEach(id=>{const d={deleted:true,deletedAt:now,trashRoot:n.id};b.update(notesRef(id),d);Object.assign(notes[id],d)});await b.commit();
+      dirty=false;editing=null;toast('휴지통으로 옮겼습니다');go(n.parent&&notes[n.parent]&&!notes[n.parent].deleted?{v:'note',id:n.parent}:{v:'list'})}catch(e){info('옮기지 못했습니다: '+(e.code||e.message))}});
+}
+const TRASH_DAYS=30;
+const trashCount=()=>trashed().filter(n=>n.trashRoot===n.id).length+all().reduce((k,n)=>k+(n.trashFiles||[]).length,0);
+function renderTrash(){
+  const roots=trashed().filter(n=>n.trashRoot===n.id||!notes[n.trashRoot]).sort((a,b)=>(b.deletedAt||0)-(a.deletedAt||0));
+  const files=[];all().forEach(n=>(n.trashFiles||[]).forEach((f,i)=>files.push({n,f,i})));files.sort((a,b)=>(b.f.removedAt||0)-(a.f.removedAt||0));
+  const left=ms=>{const d=Math.max(0,Math.ceil(TRASH_DAYS-(Date.now()-(ms||0))/864e5));return d+'일 뒤 자동 삭제'};
+  $('main').innerHTML=`<div class="eyebrow">TRASH</div><h1>휴지통</h1><p class="sub">지운 노트와 첨부는 ${TRASH_DAYS}일 동안 여기 남아 있다가 자동으로 완전히 삭제됩니다.</p>
+  <div class="panel" style="margin-bottom:14px"><h3 style="margin-bottom:8px">노트</h3>${roots.length?roots.map(n=>{const k=trashed().filter(x=>x.trashRoot===n.id&&x.id!==n.id).length,p=notes[n.parent],a=areaOf(n.area);
+    return `<div class="att"><span>📄</span><span style="flex:1;min-width:0"><b>${esc(n.title||'제목 없음')}</b><br><small>${esc([a?a.name:'',p&&!p.deleted?p.title+' 아래':'',k?'하위 노트 '+k+'개 포함':''].filter(Boolean).join(' · '))} · ${ago(n.deletedAt)} 삭제 · ${left(n.deletedAt)}</small></span><button data-restore="${esc(n.id)}">복원</button><button class="danger" data-purge="${esc(n.id)}">완전 삭제</button></div>`}).join(''):'<p class="sub" style="margin:0">휴지통이 비어 있습니다.</p>'}</div>
+  <div class="panel" style="margin-bottom:14px"><h3 style="margin-bottom:8px">첨부 파일·링크</h3>${files.length?files.map(({n,f,i})=>`<div class="att"><span>${f.kind==='link'?'🔗':'🖼'}</span><span style="flex:1;min-width:0"><b>${esc(f.name)}</b><br><small>${esc(n.title)} · ${ago(f.removedAt)} 삭제 · ${left(f.removedAt)}</small></span><button data-frestore="${esc(n.id)}:${i}">복원</button><button class="danger" data-fpurge="${esc(n.id)}:${i}">완전 삭제</button></div>`).join(''):'<p class="sub" style="margin:0">휴지통이 비어 있습니다.</p>'}</div>
+  ${roots.length||files.length?'<button class="delbtn" data-empty>휴지통 비우기</button>':''}`;
+}
+async function purgeNotes(ids){for(const id of ids){const n=notes[id];if(!n)continue;for(const f of [...(n.files||[]),...(n.trashFiles||[])])if(f.kind==='file'&&f.path)await deleteObject(sref(st,f.path)).catch(()=>{});await deleteDoc(notesRef(id));delete notes[id]}}
+async function purgeFile(n,i){const f=(n.trashFiles||[])[i];if(!f)return;if(f.kind==='file'&&f.path)await deleteObject(sref(st,f.path)).catch(()=>{});n.trashFiles=n.trashFiles.filter((_,j)=>j!==i);await updateDoc(notesRef(n.id),{trashFiles:n.trashFiles})}
+async function trashClick(d){
+  try{
+  if(d.restore){const ids=trashed().filter(x=>x.trashRoot===d.restore).map(x=>x.id);const root=notes[d.restore];const b=writeBatch(db);
+    ids.forEach(id=>{const u={deleted:false,deletedAt:null,trashRoot:null};if(id===d.restore&&root.parent&&(!notes[root.parent]||notes[root.parent].deleted))u.parent='';b.update(notesRef(id),u);Object.assign(notes[id],u)});
+    await b.commit();toast('복원했습니다');renderSide();return renderTrash()}
+  if(d.purge){const n=notes[d.purge];return ask(`「${n.title}」${trashed().some(x=>x.trashRoot===n.id&&x.id!==n.id)?'와 하위 노트':''}를 완전히 삭제할까요? 되돌릴 수 없습니다.`,'완전 삭제',async()=>{await purgeNotes(trashed().filter(x=>x.trashRoot===d.purge).map(x=>x.id));renderSide();renderTrash()})}
+  if(d.frestore){const [id,i]=d.frestore.split(':');const n=notes[id],f=n.trashFiles[+i];n.trashFiles=n.trashFiles.filter((_,j)=>j!==+i);const {removedAt,...g}=f;n.files=[...(n.files||[]),g];await updateDoc(notesRef(id),{files:n.files,trashFiles:n.trashFiles});toast('복원했습니다');renderSide();return renderTrash()}
+  if(d.fpurge){const [id,i]=d.fpurge.split(':');return ask('이 첨부를 완전히 삭제할까요? 되돌릴 수 없습니다.','완전 삭제',async()=>{await purgeFile(notes[id],+i);renderSide();renderTrash()})}
+  if('empty' in d)return ask('휴지통의 노트와 첨부를 모두 완전히 삭제할까요? 되돌릴 수 없습니다.','모두 삭제',async()=>{await purgeNotes(trashed().map(x=>x.id));for(const n of all())while((n.trashFiles||[]).length)await purgeFile(n,0);renderSide();renderTrash()});
+  }catch(e){info('처리하지 못했습니다: '+(e.code||e.message))}
+}
+let autoPurged=false;
+async function autoPurge(){
+  if(autoPurged)return;autoPurged=true;const lim=Date.now()-TRASH_DAYS*864e5;
+  try{await purgeNotes(trashed().filter(n=>(n.deletedAt||0)<lim).map(n=>n.id));
+    for(const n of all()){let k=(n.trashFiles||[]).findIndex(f=>(f.removedAt||0)<lim);while(k>=0){await purgeFile(n,k);k=(n.trashFiles||[]).findIndex(f=>(f.removedAt||0)<lim)}}}catch(e){}
 }
 function moveDlg(n){
   if(editing&&editing.isNew)return info('먼저 저장해 주세요.');
