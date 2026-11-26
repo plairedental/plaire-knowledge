@@ -368,6 +368,7 @@ function clean(html,strip){
       if(cls)c.setAttribute('class',cls);
       if(t==='SPAN'&&!c.attributes.length){c.replaceWith(...c.childNodes);return}
       if(t==='IMG'&&!c.getAttribute('src'))c.remove();
+      if(t==='BLOCKQUOTE'&&c.querySelector('img')&&!c.textContent.trim()){c.replaceWith(...c.childNodes);return}
       if(t==='A'){c.setAttribute('target','_blank');c.setAttribute('rel','noopener')}
     });
   })(rt);
@@ -853,7 +854,7 @@ function sel(kind,v){
 function cmd(c){
   const ed=$('ed');if(!ed)return;ed.focus();markDirty();const x=(a,v)=>document.execCommand(a,false,v);
   if(['bold','italic','underline','undo','redo'].includes(c))x(c);
-  else if(c==='h2'||c==='h3'||c==='p')x('formatBlock','<'+c+'>');else if(c==='quote')x('formatBlock','<blockquote>');
+  else if(c==='h2'||c==='h3'||c==='p')x('formatBlock','<'+c+'>');else if(c==='quote'){const bq=anc('#ed blockquote');if(bq)bq.replaceWith(...bq.childNodes);else x('formatBlock','<blockquote>')}
   else if(c==='strike')x('strikeThrough');else if(c==='ul')x('insertUnorderedList');else if(c==='ol')x('insertOrderedList');
   else if(c==='check')listCls('check',false);else if(c==='steps')listCls('steps',true);
   else if(c.startsWith('box-'))wrapBox(c);
