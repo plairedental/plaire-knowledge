@@ -196,6 +196,39 @@ input[type=range]{width:100%;accent-color:var(--acc)}
   .tools{top:62px}
   .top .hide-m{display:none}
 }
+
+/* ---------- 발표 모드 ---------- */
+#pres{position:fixed;inset:0;z-index:100;background:#0f1419;display:none;flex-direction:column;color:#16191d}
+#pres.show{display:flex}
+#pres .stage{flex:1;display:grid;place-items:center;padding:2vh 2vw;min-height:0}
+#pres .slide{background:#fff;width:min(96vw,calc(88vh*16/9));height:min(88vh,calc(96vw*9/16));border-radius:10px;overflow:auto;padding:clamp(24px,4.5vh,60px) clamp(28px,5vw,80px);font-size:clamp(17px,2.55vh,30px);line-height:1.55;position:relative}
+#pres .slide.title{display:flex;flex-direction:column;justify-content:center;text-align:left}
+#pres .slide .kick{color:#1f4fd1;font-weight:700;font-size:.7em;letter-spacing:.08em;margin-bottom:.6em}
+#pres .slide h1{font-size:2.1em;line-height:1.2;margin:0 0 .4em}
+#pres .slide .sub{color:#5d6672;font-size:.95em;margin:0 0 .3em}
+#pres .slide .crumb2{color:#1f4fd1;font-size:.62em;font-weight:700;margin-bottom:.4em}
+#pres .slide.content h2{font-size:1.55em;margin:0 0 .7em;padding-bottom:.3em;border-bottom:2px solid #16191d}
+#pres .slide.content h3{font-size:1.2em;margin:.2em 0 .5em}
+#pres .slide.content p,#pres .slide.content li{font-size:1em}
+#pres .slide.content table{font-size:.85em}
+#pres .slide.content img{max-height:62vh;width:auto;max-width:100%;cursor:zoom-in;margin:.5em auto}
+#pres .slide.content .tag{background:none;color:#1f4fd1;padding:0}
+#pres .bar{display:flex;align-items:center;gap:8px;padding:6px 14px 10px;color:#c9d3dd;font-size:14px}
+#pres .bar button{background:#1e2832;color:#e8eef4;border:1px solid #33414e;border-radius:8px;min-height:34px;padding:0 12px;font-size:14px}
+#pres .bar .grow{flex:1;height:4px;background:#26313b;border-radius:2px;overflow:hidden}
+#pres .bar .grow i{display:block;height:100%;background:#4c8dff;width:0}
+#pres .bar .hint{opacity:.6;font-size:12px}
+#pres.idle .bar{opacity:0;transition:opacity .4s}
+#pres .ov{position:absolute;inset:0;background:rgba(10,14,18,.96);display:none;overflow:auto;padding:30px}
+#pres .ov.show{display:block}
+#pres .ov h4{color:#fff;margin:0 0 14px;font-size:18px}
+#pres .ov button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid #26313b;color:#e8eef4;padding:10px 6px;font-size:16px}
+#pres .ov button.on{color:#4c8dff;font-weight:700}
+#pres .zoom{position:absolute;inset:0;background:rgba(0,0,0,.92);display:none;place-items:center;cursor:zoom-out}
+#pres .zoom.show{display:grid}
+#pres .zoom img{max-width:96vw;max-height:94vh;border-radius:6px}
+#pres .black{position:absolute;inset:0;background:#000;display:none}
+#pres .black.show{display:block}
 </style>
 </head>
 <body>
@@ -540,7 +573,7 @@ function renderNote(n){
   <input class="title" id="ntitle" placeholder="제목 (예: 우식 제거 어디까지 해야 하나)" value="${esc(n.title)}">
   <input class="srcline" id="ntopic" placeholder="한 줄 설명 (예: Selective caries removal · Clinical review)" value="${esc(n.topic)}">
   <div class="chips" id="htags" style="margin-top:6px"></div></div>
-  <div class="acts"><button data-aifmt title="Claude·Gemini로 서식을 정리해서 다시 붙여넣기">✨ AI 서식 정리</button><button data-copyai title="Claude에게 내용 점검을 부탁할 수 있도록 복사">AI 보완용 복사</button><button class="pri" data-save>저장</button><button class="delbtn" data-del>삭제</button></div></div>
+  <div class="acts"><button data-pres title="이 노트를 슬라이드처럼 띄워서 발표합니다">▶ 발표</button><button data-aifmt title="Claude·Gemini로 서식을 정리해서 다시 붙여넣기">✨ AI 서식 정리</button><button data-copyai title="Claude에게 내용 점검을 부탁할 수 있도록 복사">AI 보완용 복사</button><button class="pri" data-save>저장</button><button class="delbtn" data-del>삭제</button></div></div>
   ${toolbar()}
   <div class="paper"><div class="editor content" id="ed" contenteditable="true"></div></div>
   <div class="savebar"><span id="savest">${n.updated&&!editing.isNew?'마지막 저장 '+ago(n.updated):'아직 저장 전'}</span><span>Ctrl+S 저장 · #태그 는 띄어쓰기 없이</span></div>
@@ -856,6 +889,7 @@ function mainClick(e){
   if('move' in d)return moveDlg(notes[route.id]);
   if('copyai' in d)return copyAI(notes[route.id]);
   if('aifmt' in d)return aiFmtDlg();
+  if('pres' in d)return presStart();
   if('mdexp' in d)return mdExport();
   if('areaedit' in d)return areaDlg(areas.find(a=>a.id===d.areaedit));
   if('backup' in d)return backup();
@@ -1012,6 +1046,106 @@ $('impfile').onchange=async()=>{
 /* ---------- 대화상자 ---------- */
 const hide=()=>modal.classList.remove('show');
 function ask(t,yes,fn){mbox.innerHTML='<p></p><div class="r"><button id="mn">취소</button><button class="pri" id="my"></button></div>';mbox.querySelector('p').textContent=t;$('my').textContent=yes;modal.classList.add('show');$('mn').onclick=hide;$('my').onclick=()=>{hide();fn()}}
+
+/* ---------- 발표 모드 ---------- */
+let P=null;
+function presStart(){
+  const n=notes[route.id];if(!n)return;
+  const ks=kids(n.id);
+  if(ks.length){
+    mbox.innerHTML=`<p><b>발표 모드</b><br><span class="sub" style="font-size:13px">이 노트 아래에 하위 노트 ${ks.length}개가 있습니다.</span></p>
+    <div class="r"><button id="mn">이 노트만</button><button class="pri" id="my">하위 노트까지 이어서</button></div>`;
+    modal.classList.add('show');
+    $('mn').onclick=()=>{hide();presOpen(n,false)};$('my').onclick=()=>{hide();presOpen(n,true)};
+  }else presOpen(n,false);
+}
+function presCollect(n,withKids){
+  const cur=editing&&editing.id===n.id&&$('ed')?{title:$('ntitle').value,topic:$('ntopic').value,html:$('ed').innerHTML,author:$('nauthor').value,range:$('nrange').value,year:$('nyear').value}:n;
+  const list=[{n:cur,depth:0}];
+  if(withKids){const walk=(id,d)=>kids(id).forEach(k=>{list.push({n:k,depth:d});walk(k.id,d+1)});walk(n.id,1)}
+  return list;
+}
+function presSlides(list){
+  const out=[];
+  list.forEach(({n,depth},i)=>{
+    const src=[n.author,n.range,n.year].filter(Boolean).join(' · ');
+    out.push({kind:'title',label:n.title||'제목 없음',html:`<div class="kick">${i===0?'CLINICAL STUDY NOTE':'PART '+i}</div><h1>${esc(n.title||'제목 없음')}</h1>${n.topic?`<p class="sub">${esc(n.topic)}</p>`:''}${src?`<p class="sub" style="font-size:.75em">${esc(src)}</p>`:''}`});
+    const d=new DOMParser().parseFromString('<div id="r">'+clean(n.html||'')+'</div>','text/html').getElementById('r');
+    d.querySelectorAll('details').forEach(x=>x.removeAttribute('open'));
+    let h2='',cur=null;
+    const push=()=>{if(cur&&(cur.body.trim()||cur.head))out.push(cur);cur=null};
+    const start=(head,crumb)=>{push();cur={kind:'body',label:head?head.textContent.trim():(h2||'도입'),head:head?head.outerHTML:'',crumb,body:''}};
+    const hasH3={};let sec=-1;[...d.children].forEach(el=>{if(el.tagName==='H2')sec++;if(el.tagName==='H3')hasH3[sec]=1});
+    sec=-1;
+    [...d.children].forEach(el=>{
+      const t=el.tagName;
+      if(t==='H2'){sec++;h2=el.textContent.trim();start(el,'');return}
+      if(t==='H3'&&hasH3[sec]){const keep=cur&&cur.kind==='body'&&cur.head.startsWith('<h2')&&!cur.body.trim();if(keep){cur.body+=el.outerHTML;cur.label=h2+' · '+el.textContent.trim();return}start(el,h2);return}
+      if(!cur)start(null,'');
+      cur.body+=el.outerHTML;
+    });
+    push();
+  });
+  return out.map(x=>x.kind==='title'?x:{...x,html:(x.crumb?`<div class="crumb2">${esc(x.crumb)}</div>`:'')+x.head+x.body});
+}
+function presOpen(n,withKids){
+  const slides=presSlides(presCollect(n,withKids));
+  let el=$('pres');
+  if(!el){el=document.createElement('div');el.id='pres';document.body.appendChild(el)}
+  el.innerHTML=`<div class="stage" id="pstage"><div class="slide" id="pslide"></div></div>
+  <div class="bar"><button id="pprev" title="이전 (←)">‹</button><button id="pnext" title="다음 (→, 스페이스)">›</button><span id="pnum"></span><div class="grow"><i id="pprog"></i></div>
+  <span class="hint">← → 넘기기 · G 목차 · B 화면 끄기 · Esc 끝내기</span><button id="ptoc">목차</button><button id="pfs">전체 화면</button><button id="pend">끝내기</button></div>
+  <div class="ov" id="pov"></div><div class="zoom" id="pzoom"><img id="pzimg" alt=""></div><div class="black" id="pblack"></div>`;
+  P={slides,i:0,idle:0};el.classList.add('show');document.body.style.overflow='hidden';
+  $('pprev').onclick=()=>presGo(P.i-1);$('pnext').onclick=()=>presGo(P.i+1);
+  $('pend').onclick=presClose;$('ptoc').onclick=presToc;$('pfs').onclick=presFs;
+  $('pzoom').onclick=()=>$('pzoom').classList.remove('show');$('pblack').onclick=()=>$('pblack').classList.remove('show');
+  $('pstage').onclick=e=>{
+    const img=e.target.closest('img');if(img){$('pzimg').src=img.src;$('pzoom').classList.add('show');return}
+    if(e.target.closest('summary,a,details,table,button'))return;
+    const r=$('pslide').getBoundingClientRect();
+    if(e.clientX<r.left+r.width*0.25)presGo(P.i-1);else presGo(P.i+1);
+  };
+  el.onmousemove=()=>{el.classList.remove('idle');clearTimeout(P.idle);P.idle=setTimeout(()=>el.classList.add('idle'),2500)};
+  document.addEventListener('keydown',presKey,true);
+  presFs();presGo(0);
+}
+function presGo(i){
+  if(!P)return;i=Math.max(0,Math.min(P.slides.length-1,i));P.i=i;const s=P.slides[i],sl=$('pslide');
+  sl.className='slide '+(s.kind==='title'?'title':'content');sl.innerHTML=s.html;sl.scrollTop=0;
+  $('pnum').textContent=(i+1)+' / '+P.slides.length;$('pprog').style.width=((i+1)/P.slides.length*100)+'%';
+}
+function presToc(){
+  const ov=$('pov');if(ov.classList.contains('show')){ov.classList.remove('show');return}
+  ov.innerHTML='<h4>슬라이드 목록</h4>'+P.slides.map((s,i)=>`<button data-pi="${i}" class="${i===P.i?'on':''}" style="${s.kind==='title'?'font-weight:700':'padding-left:22px'}">${i+1}. ${esc(s.label||'')}</button>`).join('');
+  ov.onclick=e=>{const b=e.target.closest('[data-pi]');if(b){presGo(+b.dataset.pi);ov.classList.remove('show')}};
+  ov.classList.add('show');
+}
+function presFs(){try{if(!document.fullscreenElement)$('pres').requestFullscreen&&$('pres').requestFullscreen().catch(()=>{});else document.exitFullscreen()}catch(e){}}
+function presKey(e){
+  if(!P)return;const k=e.key;
+  if($('pzoom').classList.contains('show')&&(k==='Escape'||k===' ')){$('pzoom').classList.remove('show');e.preventDefault();return}
+  if($('pov').classList.contains('show')&&k==='Escape'){$('pov').classList.remove('show');e.preventDefault();return}
+  const sl=$('pslide');
+  if(['ArrowRight','PageDown',' ','Enter'].includes(k)){e.preventDefault();
+    if(k===' '&&sl.scrollTop+sl.clientHeight<sl.scrollHeight-4){sl.scrollBy({top:sl.clientHeight*0.8,behavior:'smooth'});return}presGo(P.i+1)}
+  else if(['ArrowLeft','PageUp','Backspace'].includes(k)){e.preventDefault();presGo(P.i-1)}
+  else if(k==='ArrowDown'){e.preventDefault();sl.scrollBy({top:120,behavior:'smooth'})}
+  else if(k==='ArrowUp'){e.preventDefault();sl.scrollBy({top:-120,behavior:'smooth'})}
+  else if(k==='Home'){e.preventDefault();presGo(0)}else if(k==='End'){e.preventDefault();presGo(P.slides.length-1)}
+  else if(k==='g'||k==='G'){e.preventDefault();presToc()}
+  else if(k==='b'||k==='B'||k==='.'){e.preventDefault();$('pblack').classList.toggle('show')}
+  else if(k==='f'||k==='F'){e.preventDefault();presFs()}
+  else if(k==='Escape'){if(!document.fullscreenElement){e.preventDefault();presClose()}}
+  e.stopPropagation();
+}
+document.addEventListener('fullscreenchange',()=>{if(P&&!document.fullscreenElement){/* 전체 화면만 빠져나옴: 발표는 유지 */}});
+function presClose(){
+  document.removeEventListener('keydown',presKey,true);
+  try{if(document.fullscreenElement)document.exitFullscreen()}catch(e){}
+  const el=$('pres');if(el){el.classList.remove('show');el.innerHTML=''}
+  document.body.style.overflow='';P=null;
+}
 function info(t){mbox.innerHTML='<p></p><div class="r"><button class="pri" id="mn">확인</button></div>';mbox.querySelector('p').textContent=t;modal.classList.add('show');$('mn').onclick=hide}
 
 /* ---------- 시작 ---------- */
