@@ -176,7 +176,7 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 .modal.show{display:flex}
 .modal .box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;max-width:440px;width:100%;display:grid;gap:12px}
 .modal .box p{margin:0}.modal .r{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 16px;z-index:40;display:none}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 16px;z-index:200;display:none}
 .center{min-height:100vh;display:grid;place-items:center;padding:20px}
 .center .panel{max-width:560px;width:100%}
 .veil{display:none}
@@ -208,7 +208,9 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 #pres .slide .sub{color:#5d6672;font-size:.95em;margin:0 0 .3em}
 #pres .slide .crumb2{color:#1f4fd1;font-size:.62em;font-weight:700;margin-bottom:.4em}
 #pres .slide.content h2{font-size:1.55em;margin:0 0 .7em;padding-bottom:.3em;border-bottom:2px solid #16191d}
-#pres .slide.content h3{font-size:1.2em;margin:.2em 0 .5em}
+#pres .slide.content h3{font-size:1.2em;margin:.8em 0 .5em}
+#pres .slide.content>:first-child,#pres .slide.content .crumb2+*{margin-top:0}
+#pres .slide.content h2{margin-top:.6em}
 #pres .slide.content p,#pres .slide.content li{font-size:1em}
 #pres .slide.content table{font-size:.85em}
 #pres .slide.content img{max-height:62vh;width:auto;max-width:100%;cursor:zoom-in;margin:.5em auto}
@@ -1066,30 +1068,37 @@ function presCollect(n,withKids){
   return list;
 }
 function presSlides(list){
-  const out=[];
+  const out=[];let usedHr=false;
   list.forEach(({n,depth},i)=>{
     const src=[n.author,n.range,n.year].filter(Boolean).join(' · ');
     out.push({kind:'title',label:n.title||'제목 없음',html:`<div class="kick">${i===0?'CLINICAL STUDY NOTE':'PART '+i}</div><h1>${esc(n.title||'제목 없음')}</h1>${n.topic?`<p class="sub">${esc(n.topic)}</p>`:''}${src?`<p class="sub" style="font-size:.75em">${esc(src)}</p>`:''}`});
     const d=new DOMParser().parseFromString('<div id="r">'+clean(n.html||'')+'</div>','text/html').getElementById('r');
     d.querySelectorAll('details').forEach(x=>x.removeAttribute('open'));
-    let h2='',cur=null;
-    const push=()=>{if(cur&&(cur.body.trim()||cur.head))out.push(cur);cur=null};
-    const start=(head,crumb)=>{push();cur={kind:'body',label:head?head.textContent.trim():(h2||'도입'),head:head?head.outerHTML:'',crumb,body:''}};
-    const hasH3={};let sec=-1;[...d.children].forEach(el=>{if(el.tagName==='H2')sec++;if(el.tagName==='H3')hasH3[sec]=1});
-    sec=-1;
-    [...d.children].forEach(el=>{
-      const t=el.tagName;
-      if(t==='H2'){sec++;h2=el.textContent.trim();start(el,'');return}
-      if(t==='H3'&&hasH3[sec]){const keep=cur&&cur.kind==='body'&&cur.head.startsWith('<h2')&&!cur.body.trim();if(keep){cur.body+=el.outerHTML;cur.label=h2+' · '+el.textContent.trim();return}start(el,h2);return}
-      if(!cur)start(null,'');
-      cur.body+=el.outerHTML;
+    /* 구분선이 다른 칸 안에 들어가 있으면 밖으로 꺼냄 */
+    let guard=0;while(guard++<20){const w=[...d.children].find(el=>el.tagName!=='HR'&&/^(DIV|P)$/.test(el.tagName)&&!el.className&&el.querySelector('hr'));if(!w)break;w.replaceWith(...w.childNodes)}
+    const els=[...d.childNodes].filter(x=>x.nodeType===1||(x.nodeType===3&&x.textContent.trim()));
+    const hasHr=els.some(el=>el.nodeName==='HR');
+    const chunks=[];let cur=[];
+    if(hasHr){usedHr=true;els.forEach(el=>{if(el.nodeName==='HR'){chunks.push(cur);cur=[]}else cur.push(el)});chunks.push(cur)}
+    else{els.forEach(el=>{if(el.nodeName==='H2'&&cur.length){chunks.push(cur);cur=[]}cur.push(el)});chunks.push(cur)}
+    let h2='';
+    chunks.forEach(c=>{
+      const html=c.map(el=>el.nodeType===1?el.outerHTML:esc(el.textContent)).join('');
+      const tmp=document.createElement('div');tmp.innerHTML=html;
+      if(!tmp.textContent.trim()&&!tmp.querySelector('img,table'))return;
+      const ownH2=tmp.querySelector('h2'),hd=ownH2||tmp.querySelector('h3');
+      const crumb=!ownH2&&h2?h2:'';
+      if(ownH2)h2=ownH2.textContent.trim();
+      const label=hd?hd.textContent.trim():(tmp.textContent.trim().slice(0,30)||'그림');
+      out.push({kind:'body',label,html:(crumb?`<div class="crumb2">${esc(crumb)}</div>`:'')+html});
     });
-    push();
   });
-  return out.map(x=>x.kind==='title'?x:{...x,html:(x.crumb?`<div class="crumb2">${esc(x.crumb)}</div>`:'')+x.head+x.body});
+  out.usedHr=usedHr;
+  return out;
 }
 function presOpen(n,withKids){
   const slides=presSlides(presCollect(n,withKids));
+  if(!slides.usedHr)setTimeout(()=>toast('구분선이 없어 큰 제목마다 나눴습니다. 본문에 구분선을 넣으면 그 자리에서 나뉩니다.'),300);
   let el=$('pres');
   if(!el){el=document.createElement('div');el.id='pres';document.body.appendChild(el)}
   el.innerHTML=`<div class="stage" id="pstage"><div class="slide" id="pslide"></div></div>
