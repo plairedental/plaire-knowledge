@@ -209,7 +209,10 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 #pres .slide .crumb2{color:#1f4fd1;font-size:.62em;font-weight:700;margin-bottom:.4em}
 #pres .slide.content h2{font-size:1.55em;margin:0 0 .7em;padding-bottom:.3em;border-bottom:2px solid #16191d}
 #pres .slide.content h3{font-size:1.2em;margin:.8em 0 .5em}
-#pres .slide.content>:first-child,#pres .slide.content .crumb2+*{margin-top:0}
+#pres .slide.content{display:flex;flex-direction:column}
+#pres .slide .inner{margin:auto 0;width:100%}
+#pres .slide .inner>:first-child,#pres .slide .inner .crumb2+*{margin-top:0}
+#pres .slide .inner>:last-child{margin-bottom:0}
 #pres .slide.content h2{margin-top:.6em}
 #pres .slide.content p,#pres .slide.content li{font-size:1em}
 #pres .slide.content table{font-size:.85em}
@@ -1121,7 +1124,7 @@ function presOpen(n,withKids){
 }
 function presGo(i){
   if(!P)return;i=Math.max(0,Math.min(P.slides.length-1,i));P.i=i;const s=P.slides[i],sl=$('pslide');
-  sl.className='slide '+(s.kind==='title'?'title':'content');sl.innerHTML=s.html;sl.scrollTop=0;
+  sl.className='slide '+(s.kind==='title'?'title':'content');sl.innerHTML=s.kind==='title'?s.html:'<div class="inner">'+s.html+'</div>';sl.scrollTop=0;
   $('pnum').textContent=(i+1)+' / '+P.slides.length;$('pprog').style.width=((i+1)/P.slides.length*100)+'%';
 }
 function presToc(){
