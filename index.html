@@ -231,7 +231,10 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 #pres .ov button.on{color:#4c8dff;font-weight:700}
 #pres .zoom{position:absolute;inset:0;background:rgba(0,0,0,.92);display:none;place-items:center;cursor:zoom-out}
 #pres .zoom.show{display:grid}
-#pres .zoom img{max-width:96vw;max-height:94vh;border-radius:6px}
+#pres .zoom{overflow:hidden;touch-action:none}
+#pres .zoom img{max-width:96vw;max-height:94vh;border-radius:6px;transform-origin:center;user-select:none;-webkit-user-drag:none;will-change:transform}
+#pres .zoom.zoomed{cursor:grab}#pres .zoom.drag{cursor:grabbing}
+#pres .zoom .zhint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);color:#c9d3dd;font-size:13px;background:rgba(0,0,0,.55);padding:5px 12px;border-radius:14px;pointer-events:none;white-space:nowrap}
 #pres .black{position:absolute;inset:0;background:#000;display:none}
 #pres .black.show{display:block}
 </style>
@@ -1108,13 +1111,13 @@ function presOpen(n,withKids){
   el.innerHTML=`<div class="stage" id="pstage"><div class="slide" id="pslide"></div></div>
   <div class="bar"><button id="pprev" title="이전 (←)">‹</button><button id="pnext" title="다음 (→, 스페이스)">›</button><span id="pnum"></span><div class="grow"><i id="pprog"></i></div>
   <span class="hint">← → 넘기기 · G 목차 · B 화면 끄기 · Esc 끝내기</span><button id="ptoc">목차</button><button id="pfs">전체 화면</button><button id="pend">끝내기</button></div>
-  <div class="ov" id="pov"></div><div class="zoom" id="pzoom"><img id="pzimg" alt=""></div><div class="black" id="pblack"></div>`;
+  <div class="ov" id="pov"></div><div class="zoom" id="pzoom"><img id="pzimg" alt="" draggable="false"><span class="zhint" id="pzhint">휠: 확대·축소 · 드래그: 이동 · 더블클릭: 원래 크기 · 클릭/Esc: 닫기</span></div><div class="black" id="pblack"></div>`;
   P={slides,i:0,idle:0};el.classList.add('show');document.body.style.overflow='hidden';
   $('pprev').onclick=()=>presGo(P.i-1);$('pnext').onclick=()=>presGo(P.i+1);
   $('pend').onclick=presClose;$('ptoc').onclick=presToc;$('pfs').onclick=presFs;
-  $('pzoom').onclick=()=>$('pzoom').classList.remove('show');$('pblack').onclick=()=>$('pblack').classList.remove('show');
+  zoomInit();$('pblack').onclick=()=>$('pblack').classList.remove('show');
   $('pstage').onclick=e=>{
-    const img=e.target.closest('img');if(img){$('pzimg').src=img.src;$('pzoom').classList.add('show');return}
+    const img=e.target.closest('img');if(img){zoomOpen(img.src);return}
     if(e.target.closest('summary,a,details,table,button'))return;
     const r=$('pslide').getBoundingClientRect();
     if(e.clientX<r.left+r.width*0.25)presGo(P.i-1);else presGo(P.i+1);
@@ -1122,6 +1125,22 @@ function presOpen(n,withKids){
   el.onmousemove=()=>{el.classList.remove('idle');clearTimeout(P.idle);P.idle=setTimeout(()=>el.classList.add('idle'),2500)};
   document.addEventListener('keydown',presKey,true);
   presFs();presGo(0);
+}
+let Z={s:1,x:0,y:0};
+function zoomApply(){const z=$('pzoom'),im=$('pzimg');im.style.transform=`translate(${Z.x}px,${Z.y}px) scale(${Z.s})`;z.classList.toggle('zoomed',Z.s>1.01);$('pzhint').textContent=Z.s>1.01?Math.round(Z.s*100)+'% · 드래그: 이동 · 더블클릭: 원래 크기 · 클릭/Esc: 닫기':'휠: 확대·축소 · 드래그: 이동 · 더블클릭: 원래 크기 · 클릭/Esc: 닫기'}
+function zoomReset(){Z={s:1,x:0,y:0};zoomApply()}
+function zoomOpen(src){$('pzimg').src=src;Z={s:1,x:0,y:0};zoomApply();$('pzoom').classList.add('show')}
+function zoomClose(){$('pzoom').classList.remove('show','drag');zoomReset()}
+function zoomAt(f,cx,cy){const r=$('pzimg').getBoundingClientRect();const ns=Math.max(1,Math.min(8,Z.s*f));const k=ns/Z.s;
+  if(ns<=1){zoomReset();return}
+  const px=cx-(r.left+r.width/2),py=cy-(r.top+r.height/2);Z.x+=px*(1-k);Z.y+=py*(1-k);Z.s=ns;zoomApply()}
+function zoomBy(f){const z=$('pzoom').getBoundingClientRect();zoomAt(f,z.left+z.width/2,z.top+z.height/2)}
+function zoomInit(){const z=$('pzoom');let d=null,moved=false;
+  z.addEventListener('wheel',e=>{e.preventDefault();e.stopPropagation();zoomAt(Math.exp(-e.deltaY*0.0015),e.clientX,e.clientY)},{passive:false});
+  z.onpointerdown=e=>{if(e.button!==0)return;d={x:e.clientX,y:e.clientY,ox:Z.x,oy:Z.y};moved=false;try{z.setPointerCapture(e.pointerId)}catch(_){}};
+  z.onpointermove=e=>{if(!d)return;const dx=e.clientX-d.x,dy=e.clientY-d.y;if(Math.abs(dx)+Math.abs(dy)>4)moved=true;if(moved&&Z.s>1.01){Z.x=d.ox+dx;Z.y=d.oy+dy;z.classList.add('drag');zoomApply()}};
+  z.onpointerup=e=>{const wasMoved=moved;d=null;z.classList.remove('drag');if(!wasMoved){clearTimeout(z._t);z._t=setTimeout(zoomClose,260)}};
+  z.ondblclick=e=>{clearTimeout(z._t);if(Z.s>1.01)zoomReset();else zoomAt(2.5,e.clientX,e.clientY)};
 }
 function presGo(i){
   if(!P)return;i=Math.max(0,Math.min(P.slides.length-1,i));P.i=i;const s=P.slides[i],sl=$('pslide');
@@ -1137,7 +1156,7 @@ function presToc(){
 function presFs(){try{if(!document.fullscreenElement)$('pres').requestFullscreen&&$('pres').requestFullscreen().catch(()=>{});else document.exitFullscreen()}catch(e){}}
 function presKey(e){
   if(!P)return;const k=e.key;
-  if($('pzoom').classList.contains('show')&&(k==='Escape'||k===' ')){$('pzoom').classList.remove('show');e.preventDefault();return}
+  if($('pzoom').classList.contains('show')){if(k==='Escape'||k===' '){zoomClose();e.preventDefault()}else if(k==='+'||k==='='){zoomBy(1.25);e.preventDefault()}else if(k==='-'||k==='_'){zoomBy(0.8);e.preventDefault()}else if(k==='0'){zoomReset();e.preventDefault()}e.stopPropagation();return}
   if($('pov').classList.contains('show')&&k==='Escape'){$('pov').classList.remove('show');e.preventDefault();return}
   const sl=$('pslide');
   if(['ArrowRight','PageDown',' ','Enter'].includes(k)){e.preventDefault();
