@@ -582,7 +582,7 @@ function renderNote(n){
   <input class="title" id="ntitle" placeholder="제목 (예: 우식 제거 어디까지 해야 하나)" value="${esc(n.title)}">
   <input class="srcline" id="ntopic" placeholder="한 줄 설명 (예: Selective caries removal · Clinical review)" value="${esc(n.topic)}">
   <div class="chips" id="htags" style="margin-top:6px"></div></div>
-  <div class="acts"><button data-pres title="이 노트를 슬라이드처럼 띄워서 발표합니다">▶ 발표</button><button data-aifmt title="Claude·Gemini로 서식을 정리해서 다시 붙여넣기">✨ AI 서식 정리</button><button data-copyai title="Claude에게 내용 점검을 부탁할 수 있도록 복사">AI 보완용 복사</button><button class="pri" data-save>저장</button><button class="delbtn" data-del>삭제</button></div></div>
+  <div class="acts"><button data-pres title="이 노트를 슬라이드처럼 띄워서 발표합니다">▶ 발표</button><button data-aifmt title="Claude·Gemini로 서식을 정리해서 다시 붙여넣기">✨ AI 서식 정리</button><button data-pdf title="노트를 PDF 파일로 저장하거나 인쇄합니다">PDF 저장</button><button data-copyai title="Claude에게 내용 점검을 부탁할 수 있도록 복사">AI 보완용 복사</button><button class="pri" data-save>저장</button><button class="delbtn" data-del>삭제</button></div></div>
   ${toolbar()}
   <div class="paper"><div class="editor content" id="ed" contenteditable="true"></div></div>
   <div class="savebar"><span id="savest">${n.updated&&!editing.isNew?'마지막 저장 '+ago(n.updated):'아직 저장 전'}</span><span>Ctrl+S 저장 · #태그 는 띄어쓰기 없이</span></div>
@@ -899,6 +899,7 @@ function mainClick(e){
   if('copyai' in d)return copyAI(notes[route.id]);
   if('aifmt' in d)return aiFmtDlg();
   if('pres' in d)return presStart();
+  if('pdf' in d)return pdfStart();
   if('mdexp' in d)return mdExport();
   if('areaedit' in d)return areaDlg(areas.find(a=>a.id===d.areaedit));
   if('backup' in d)return backup();
@@ -1067,6 +1068,48 @@ function presStart(){
     modal.classList.add('show');
     $('mn').onclick=()=>{hide();presOpen(n,false)};$('my').onclick=()=>{hide();presOpen(n,true)};
   }else presOpen(n,false);
+}
+function pdfStart(){
+  const n=notes[route.id];if(!n)return;
+  const ks=kids(n.id);
+  if(ks.length){
+    mbox.innerHTML=`<p><b>PDF 저장</b><br><span class="sub" style="font-size:13px">이 노트 아래에 하위 노트 ${ks.length}개가 있습니다.</span></p>
+    <div class="r"><button id="mn">이 노트만</button><button class="pri" id="my">하위 노트까지 한 파일로</button></div>`;
+    modal.classList.add('show');
+    $('mn').onclick=()=>{hide();pdfMake(n,false)};$('my').onclick=()=>{hide();pdfMake(n,true)};
+  }else pdfMake(n,false);
+}
+function pdfMake(n,withKids){
+  const list=presCollect(n,withKids);
+  const css=[...document.querySelectorAll('style')].map(x=>x.textContent).join('\n');
+  const body=list.map(({n:x,depth},i)=>{
+    const meta=[x.topic,[x.author,x.year].filter(Boolean).join(', '),x.range].filter(Boolean).map(esc).join(' · ');
+    return `<section class="pdoc${i?' brk':''}"><h1 class="pt${depth?' sub':''}">${esc(x.title||'제목 없음')}</h1>${meta?`<div class="pm">${meta}</div>`:''}<div class="content">${clean(x.html||'')}</div></section>`;
+  }).join('');
+  const extra=`html,body{background:#fff!important;color:#16191d;height:auto;overflow:visible!important}
+  body{margin:0;padding:0;font-size:12pt;line-height:1.6}
+  @page{size:A4;margin:16mm 15mm}
+  .pdoc{max-width:none}.pdoc.brk{break-before:page}
+  .pt{font-size:20pt;line-height:1.25;margin:0 0 4pt}.pt.sub{font-size:17pt}
+  .pm{color:#5d6672;font-size:10pt;margin:0 0 12pt;padding-bottom:8pt;border-bottom:1.5px solid #16191d}
+  .content{font-size:11.5pt}
+  .content img{max-width:100%;break-inside:avoid;page-break-inside:avoid}
+  .content h2,.content h3{break-after:avoid;page-break-after:avoid}
+  .content .box-blue,.content .box-green,.content .box-warn,.content table,.content tr,.content li{break-inside:avoid;page-break-inside:avoid}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}`;
+  const title=(list[0].n.title||'노트').replace(/[\\/:*?"<>|]/g,' ');
+  const old=$('pdfframe');if(old)old.remove();
+  const f=document.createElement('iframe');f.id='pdfframe';
+  f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  document.body.appendChild(f);
+  const d=f.contentDocument;
+  d.open();d.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}\n${extra}</style></head><body>${body}</body></html>`);d.close();
+  d.querySelectorAll('details').forEach(x=>x.open=true);
+  toast('PDF를 준비하고 있습니다… 인쇄 창에서 "PDF로 저장"을 고르세요.');
+  const imgs=[...d.images];
+  Promise.all(imgs.map(im=>im.complete?1:new Promise(r=>{im.onload=im.onerror=r;setTimeout(r,15000)}))).then(()=>{
+    setTimeout(()=>{const ot=document.title;document.title=title;try{f.contentWindow.focus();f.contentWindow.print()}catch(e){info('인쇄 창을 열지 못했습니다.')}setTimeout(()=>{document.title=ot},1500)},200);
+  });
 }
 function presCollect(n,withKids){
   const cur=editing&&editing.id===n.id&&$('ed')?{title:$('ntitle').value,topic:$('ntopic').value,html:$('ed').innerHTML,author:$('nauthor').value,range:$('nrange').value,year:$('nyear').value}:n;
