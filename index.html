@@ -223,7 +223,16 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 #pres .bar .grow{flex:1;height:4px;background:#26313b;border-radius:2px;overflow:hidden}
 #pres .bar .grow i{display:block;height:100%;background:#4c8dff;width:0}
 #pres .bar .hint{opacity:.6;font-size:12px}
-#pres.idle .bar{opacity:0;transition:opacity .4s}
+#pres .bar,#pres .side{transition:opacity .4s}
+#pres.idle .bar,#pres.idle .side{opacity:0}
+#pres .bar button:disabled{opacity:.35;cursor:default}
+#pres .bar #pnum{min-width:64px;text-align:center;font-variant-numeric:tabular-nums}
+#pres .stage{position:relative}
+#pres .side{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;border:0;background:rgba(20,28,36,.55);color:#fff;font-size:28px;line-height:1;display:grid;place-items:center;cursor:pointer;z-index:2}
+#pres .side:hover{background:rgba(20,28,36,.85)}
+#pres .side:disabled{opacity:0;pointer-events:none}
+#pres .side.l{left:max(6px,calc((100vw - min(96vw,calc(88vh*16/9)))/2 - 56px))}
+#pres .side.r{right:max(6px,calc((100vw - min(96vw,calc(88vh*16/9)))/2 - 56px))}
 #pres .ov{position:absolute;inset:0;background:rgba(10,14,18,.96);display:none;overflow:auto;padding:30px}
 #pres .ov.show{display:block}
 #pres .ov h4{color:#fff;margin:0 0 14px;font-size:18px}
@@ -1151,20 +1160,16 @@ function presOpen(n,withKids){
   if(!slides.usedHr)setTimeout(()=>toast('구분선이 없어 큰 제목마다 나눴습니다. 본문에 구분선을 넣으면 그 자리에서 나뉩니다.'),300);
   let el=$('pres');
   if(!el){el=document.createElement('div');el.id='pres';document.body.appendChild(el)}
-  el.innerHTML=`<div class="stage" id="pstage"><div class="slide" id="pslide"></div></div>
-  <div class="bar"><button id="pprev" title="이전 (←)">‹</button><button id="pnext" title="다음 (→, 스페이스)">›</button><span id="pnum"></span><div class="grow"><i id="pprog"></i></div>
-  <span class="hint">← → 넘기기 · G 목차 · B 화면 끄기 · Esc 끝내기</span><button id="ptoc">목차</button><button id="pfs">전체 화면</button><button id="pend">끝내기</button></div>
+  el.innerHTML=`<div class="stage" id="pstage"><button class="side l" id="psl" title="이전 슬라이드 (←)">‹</button><div class="slide" id="pslide"></div><button class="side r" id="psr" title="다음 슬라이드 (→)">›</button></div>
+  <div class="bar"><button id="pprev" title="이전 슬라이드 (←)">‹ 이전</button><span id="pnum"></span><button id="pnext" title="다음 슬라이드 (→)">다음 ›</button><div class="grow"><i id="pprog"></i></div>
+  <span class="hint">← → 넘기기 · ↑↓ 스크롤 · 사진 클릭: 확대 · G 목차 · B 화면 끄기 · Esc 끝내기</span><button id="ptoc">목차</button><button id="pfs">전체 화면</button><button id="pend">끝내기</button></div>
   <div class="ov" id="pov"></div><div class="zoom" id="pzoom"><img id="pzimg" alt="" draggable="false"><span class="zhint" id="pzhint">휠: 확대·축소 · 드래그: 이동 · 더블클릭: 원래 크기 · 클릭/Esc: 닫기</span></div><div class="black" id="pblack"></div>`;
   P={slides,i:0,idle:0};el.classList.add('show');document.body.style.overflow='hidden';
-  $('pprev').onclick=()=>presGo(P.i-1);$('pnext').onclick=()=>presGo(P.i+1);
+  $('pprev').onclick=$('psl').onclick=()=>presGo(P.i-1);$('pnext').onclick=$('psr').onclick=()=>presGo(P.i+1);
+  el.querySelectorAll('button').forEach(b=>b.addEventListener('mousedown',e=>e.preventDefault()));
   $('pend').onclick=presClose;$('ptoc').onclick=presToc;$('pfs').onclick=presFs;
   zoomInit();$('pblack').onclick=()=>$('pblack').classList.remove('show');
-  $('pstage').onclick=e=>{
-    const img=e.target.closest('img');if(img){zoomOpen(img.src);return}
-    if(e.target.closest('summary,a,details,table,button'))return;
-    const r=$('pslide').getBoundingClientRect();
-    if(e.clientX<r.left+r.width*0.25)presGo(P.i-1);else presGo(P.i+1);
-  };
+  $('pslide').onclick=e=>{const img=e.target.closest('img');if(img)zoomOpen(img.src)};
   el.onmousemove=()=>{el.classList.remove('idle');clearTimeout(P.idle);P.idle=setTimeout(()=>el.classList.add('idle'),2500)};
   document.addEventListener('keydown',presKey,true);
   presFs();presGo(0);
@@ -1189,6 +1194,7 @@ function presGo(i){
   if(!P)return;i=Math.max(0,Math.min(P.slides.length-1,i));P.i=i;const s=P.slides[i],sl=$('pslide');
   sl.className='slide '+(s.kind==='title'?'title':'content');sl.innerHTML=s.kind==='title'?s.html:'<div class="inner">'+s.html+'</div>';sl.scrollTop=0;
   $('pnum').textContent=(i+1)+' / '+P.slides.length;$('pprog').style.width=((i+1)/P.slides.length*100)+'%';
+  const first=i===0,last=i===P.slides.length-1;$('pprev').disabled=$('psl').disabled=first;$('pnext').disabled=$('psr').disabled=last;
 }
 function presToc(){
   const ov=$('pov');if(ov.classList.contains('show')){ov.classList.remove('show');return}
@@ -1202,9 +1208,9 @@ function presKey(e){
   if($('pzoom').classList.contains('show')){if(k==='Escape'||k===' '){zoomClose();e.preventDefault()}else if(k==='+'||k==='='){zoomBy(1.25);e.preventDefault()}else if(k==='-'||k==='_'){zoomBy(0.8);e.preventDefault()}else if(k==='0'){zoomReset();e.preventDefault()}e.stopPropagation();return}
   if($('pov').classList.contains('show')&&k==='Escape'){$('pov').classList.remove('show');e.preventDefault();return}
   const sl=$('pslide');
-  if(['ArrowRight','PageDown',' ','Enter'].includes(k)){e.preventDefault();
-    if(k===' '&&sl.scrollTop+sl.clientHeight<sl.scrollHeight-4){sl.scrollBy({top:sl.clientHeight*0.8,behavior:'smooth'});return}presGo(P.i+1)}
-  else if(['ArrowLeft','PageUp','Backspace'].includes(k)){e.preventDefault();presGo(P.i-1)}
+  if(['ArrowRight','PageDown',' ','Enter'].includes(k)){e.preventDefault();e.stopPropagation();
+    if(k===' '&&sl.scrollTop+sl.clientHeight<sl.scrollHeight-4){sl.scrollBy({top:sl.clientHeight*0.8,behavior:'smooth'});return}presGo(P.i+1);return}
+  else if(['ArrowLeft','PageUp'].includes(k)){e.preventDefault();presGo(P.i-1)}
   else if(k==='ArrowDown'){e.preventDefault();sl.scrollBy({top:120,behavior:'smooth'})}
   else if(k==='ArrowUp'){e.preventDefault();sl.scrollBy({top:-120,behavior:'smooth'})}
   else if(k==='Home'){e.preventDefault();presGo(0)}else if(k==='End'){e.preventDefault();presGo(P.slides.length-1)}
